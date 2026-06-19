@@ -1,0 +1,3 @@
+[mysqld]
+# Conservative server caps similar to shared hosting (local dev only).
+max_connections = 75

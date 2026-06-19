@@ -1,0 +1,255 @@
+"""
+Creates test bookings that mimic the public website and the driver app payloads.
+
+Usage:
+  python -m scripts.seed_test_bookings
+  python -m scripts.seed_test_bookings --website
+  python -m scripts.seed_test_bookings --app
+
+Requires the NestJS API running (APP_URL in .env, default http://localhost:3000).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+
+from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
+from scripts._bootstrap import api_base_url, bootstrap
+
+BARCELONA_AIRPORT = "Barcelona-El Prat International Airport (BCN)"
+AIRPORT_LABEL = re.compile(
+    r"^barcelona[- ]?el\s+prat|barcelona.*\(bcn\)|\bbcn\b",
+    re.IGNORECASE,
+)
+
+
+def is_airport_label(label: str) -> bool:
+    trimmed = label.strip()
+    if not trimmed:
+        return False
+    if AIRPORT_LABEL.search(trimmed):
+        return True
+    return bool(re.search(r"airport|aeropuerto", trimmed, re.IGNORECASE))
+
+
+def build_booking_location(
+    label: str,
+    *,
+    flight: str | None = None,
+    airline: str | None = None,
+) -> dict:
+    trimmed = label.strip()
+    flight_value = (flight or "").strip()
+    airline_value = (airline or "").strip()
+
+    if is_airport_label(trimmed):
+        location = {"kind": "airport", "label": trimmed}
+        if flight_value:
+            location["flight"] = flight_value
+        if airline_value:
+            location["airline"] = airline_value
+        return location
+
+    return {"kind": "location", "label": trimmed or "Address TBC"}
+
+
+def build_booking_locations(
+    quote: dict[str, str],
+    flight: str | None = None,
+) -> tuple[dict, dict]:
+    trimmed_flight = (flight or "").strip()
+    pickup_is_airport = quote["routeType"] == "fromAirport" or is_airport_label(
+        quote["pickup"]
+    )
+    dropoff_is_airport = quote["routeType"] == "toAirport" or is_airport_label(
+        quote["dropoff"]
+    )
+
+    if trimmed_flight and pickup_is_airport and not dropoff_is_airport:
+        return (
+            build_booking_location(quote["pickup"], flight=trimmed_flight),
+            build_booking_location(quote["dropoff"]),
+        )
+    if trimmed_flight and dropoff_is_airport:
+        return (
+            build_booking_location(quote["pickup"]),
+            build_booking_location(quote["dropoff"], flight=trimmed_flight),
+        )
+
+    return (
+        build_booking_location(quote["pickup"]),
+        build_booking_location(quote["dropoff"]),
+    )
+
+
+def guest_email_from_phone(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone)
+    core = digits if digits else "unknown"
+    return f"guest.{core}@taxibarcelona24.guest"
+
+
+def pickup_iso(hours_from_now: int = 48) -> str:
+    scheduled = datetime.now(timezone.utc) + timedelta(hours=hours_from_now)
+    scheduled = scheduled.replace(minute=0, second=0, microsecond=0)
+    return scheduled.isoformat().replace("+00:00", "Z")
+
+
+def estimate_website_price(
+    passengers: int,
+    luggage: int,
+    infant: int = 0,
+    child: int = 0,
+    booster: int = 0,
+) -> int:
+    return calculate_booking_price(
+        BookingPriceInputs(
+            passenger_count=passengers,
+            luggage_count=luggage,
+            infant_carrier_count=infant,
+            child_seat_count=child,
+            booster_count=booster,
+        )
+    )
+
+
+def build_website_payload(scheduled_time: str) -> dict:
+    quote = {
+        "routeType": "fromAirport",
+        "pickup": BARCELONA_AIRPORT,
+        "dropoff": "Hotel Arts Barcelona, Carrer de la Marina, 19-21",
+    }
+    flight = "VY1451"
+    pickup_location, dropoff_location = build_booking_locations(quote, flight)
+    return {
+        "customerName": "Website Test Passenger",
+        "customerEmail": "website.test@barcelonataxi24.com",
+        "customerPhone": "+34 600 111 222",
+        "flightNumber": flight,
+        "pickupLocation": pickup_location,
+        "dropoffLocation": dropoff_location,
+        "scheduledTime": scheduled_time,
+        "price": estimate_website_price(2, 2, 1, 0, 0),
+        "status": "PENDING",
+        "luggageCount": 2,
+        "passengerCount": 2,
+        "infantCarrierCount": 1,
+        "childSeatCount": 0,
+        "boosterCount": 0,
+        "note": (
+            "Wheelchair accessible vehicle: Test booking from seed-test-bookings "
+            "script (website)."
+        ),
+    }
+
+
+def build_app_payload(scheduled_time: str) -> dict:
+    phone = "+34600222333"
+    return {
+        "customerName": "App Test Passenger",
+        "customerPhone": phone,
+        "customerEmail": guest_email_from_phone(phone),
+        "pickupLocation": {
+            "kind": "airport",
+            "label": "Barcelona-El Prat Airport",
+            "airline": "Vueling",
+            "flight": "VY9999",
+        },
+        "dropoffLocation": {
+            "kind": "location",
+            "label": "Plaça de Catalunya, Barcelona",
+        },
+        "flightNumber": "Vueling VY9999",
+        "scheduledTime": scheduled_time,
+        "price": 0,
+        "status": "PENDING",
+        "luggageCount": 0,
+        "passengerCount": 3,
+        "infantCarrierCount": 0,
+        "childSeatCount": 0,
+        "boosterCount": 0,
+        "note": "Test booking from seed-test-bookings script (driver app).",
+    }
+
+
+def post_booking(base_url: str, body: dict) -> dict:
+    payload = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}/bookings",
+        data=payload,
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        raw = error.read().decode("utf-8", errors="replace")
+        try:
+            parsed = json.loads(raw)
+            message = parsed.get("message")
+            if isinstance(message, list):
+                text = " ".join(str(item) for item in message)
+            else:
+                text = str(message or raw)
+        except json.JSONDecodeError:
+            text = raw or str(error)
+        raise RuntimeError(text) from error
+
+
+def expected_icon(source: str) -> str:
+    return "globe (website)" if source == "website" else "phone-portrait (app)"
+
+
+def seed_one(base_url: str, label: str, source: str, body: dict) -> None:
+    print(f"\n--- {label} ---")
+    created = post_booking(base_url, body)
+    email = body.get("customerEmail") or created.get("customerEmail") or "—"
+    print(f"  reference:  {created['bookingReference']}")
+    print(f"  uuid:       {created['uuid']}")
+    print(f"  email:      {email}")
+    print(f"  app icon:   {expected_icon(source)}")
+
+
+def main() -> int:
+    bootstrap()
+    args = set(sys.argv[1:])
+    website_only = "--website" in args
+    app_only = "--app" in args
+    both = not website_only and not app_only
+
+    base_url = api_base_url()
+    print(f"API: {base_url}/bookings")
+
+    try:
+        if both or website_only:
+            seed_one(
+                base_url,
+                "Website booking (POST /bookings — same payload as barcelonataxi24.com)",
+                "website",
+                build_website_payload(pickup_iso(48)),
+            )
+        if both or app_only:
+            seed_one(
+                base_url,
+                "App booking (guest email + airport JSON — same as New Reservation screen)",
+                "app",
+                build_app_payload(pickup_iso(50)),
+            )
+    except RuntimeError as error:
+        print(error)
+        return 1
+
+    print("\nDone. Open the driver app bookings list to compare icons.")
+    print("  globe  = website booking")
+    print("  phone  = app booking")
+    print("  mail   = Viator email (BR-…)\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
