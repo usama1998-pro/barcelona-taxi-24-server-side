@@ -27,7 +27,38 @@ def get_booking_time_zone() -> str:
 
 
 def is_viator_test_booking_subject(subject: str) -> bool:
-    return bool(_VIATOR_TEST_SUBJECT.match(subject.strip()))
+    trimmed = subject.strip()
+    if _VIATOR_TEST_SUBJECT.match(trimmed):
+        return True
+    return bool(re.search(r"\(#[A-Z0-9-]*TEST\)", trimmed, re.IGNORECASE))
+
+
+def is_viator_test_email_source(raw_source: bytes | str) -> bool:
+    """Detect script/inbox test messages by body marker (not real Viator)."""
+    from app.modules.viator.parse_email_body import _strip_html_to_text
+
+    source = (
+        raw_source
+        if isinstance(raw_source, bytes)
+        else raw_source.encode("utf-8", errors="replace")
+    )
+    try:
+        from mailparser import parse_from_bytes
+
+        parsed = parse_from_bytes(source)
+        text = (parsed.text or "").strip()
+        if not text and parsed.text_html:
+            html = (
+                parsed.text_html[0]
+                if isinstance(parsed.text_html, list)
+                else parsed.text_html
+            )
+            text = _strip_html_to_text(str(html))
+        if text and "viator test booking" in text.lower():
+            return True
+    except Exception:
+        pass
+    return b"viator test booking" in source.lower()
 
 
 def parse_viator_test_booking_subject(

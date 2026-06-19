@@ -17,6 +17,8 @@ COMPANY_LINES = [
     "info@taxibarcelona24.com",
 ]
 TERMS_TEXT = "Payment received via bank transfer"
+# Core PDF fonts (Helvetica) are Latin-1 only; avoid Unicode like € or em dash.
+_EMPTY = "-"
 
 
 def _format_money(amount: float) -> str:
@@ -24,7 +26,7 @@ def _format_money(amount: float) -> str:
 
 
 def _format_euro(amount: float) -> str:
-    return f"€ {_format_money(amount)}"
+    return f"EUR {_format_money(amount)}"
 
 
 def _format_endpoint(
@@ -34,12 +36,12 @@ def _format_endpoint(
     flight_no: str | None,
 ) -> str:
     if kind == InvoiceAddressKind.LOCATION.value:
-        return (address or "").strip() or "—"
+        return (address or "").strip() or _EMPTY
     airline_text = (airline or "").strip()
     flight_text = (flight_no or "").strip()
     if not airline_text and not flight_text:
-        return "—"
-    return " · ".join(part for part in (airline_text, flight_text) if part)
+        return _EMPTY
+    return " / ".join(part for part in (airline_text, flight_text) if part)
 
 
 def _invoice_display_number(invoice_id: str) -> str:
@@ -65,8 +67,8 @@ def _invoice_date_ymd(iso_value: str) -> str:
 
 
 def _transfer_description(pickup: str, dropoff: str) -> str:
-    pickup_text = "" if pickup.strip() == "—" else pickup.strip()
-    dropoff_text = "" if dropoff.strip() == "—" else dropoff.strip()
+    pickup_text = "" if pickup.strip() == _EMPTY else pickup.strip()
+    dropoff_text = "" if dropoff.strip() == _EMPTY else dropoff.strip()
     if not pickup_text and not dropoff_text:
         return "Transfer"
     if pickup_text and dropoff_text:

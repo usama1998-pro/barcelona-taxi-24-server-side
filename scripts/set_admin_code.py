@@ -67,10 +67,10 @@ def main() -> int:
                             """
                             INSERT INTO `Driver` (
                                 id, user_id, name, email, phone, password,
-                                isAvailable, isActive, token_version
+                                ratingCount, isAvailable, isActive, token_version
                             ) VALUES (
                                 :id, :user_id, :name, :email, :phone, :password,
-                                1, 1, 0
+                                0, 1, 1, 0
                             )
                             """
                         ),

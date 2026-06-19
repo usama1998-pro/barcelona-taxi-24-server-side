@@ -35,7 +35,11 @@ def api_base_url() -> str:
     bootstrap()
     from app.core.config import settings
 
-    return settings.app_url.rstrip("/")
+    base = settings.app_url.rstrip("/")
+    port = os.getenv("PORT", "").strip() or str(settings.port)
+    if base in {"http://localhost:3000", "http://127.0.0.1:3000"} and port != "3000":
+        base = f"http://localhost:{port}"
+    return f"{base}/api/v1"
 
 
 def backend_dir() -> Path:

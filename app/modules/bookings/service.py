@@ -578,7 +578,8 @@ class BookingsService:
             if scheduled_day_filter is not None:
                 conditions.append(scheduled_day_filter)
             order_by = [
-                Booking.completed_at.desc().nullslast(),
+                Booking.completed_at.is_(None),
+                Booking.completed_at.desc(),
                 Booking.scheduled_time.desc(),
                 Booking.created_at.desc(),
             ]
@@ -594,7 +595,7 @@ class BookingsService:
                         Booking.scheduled_time < start_of_tomorrow,
                     ]
                 )
-            order_by = [Booking.scheduled_time.asc()]
+            order_by = [Booking.scheduled_time.asc(), Booking.created_at.desc()]
         elif query.time_scope == BookingTimeScope.upcoming:
             if scheduled_day_filter is not None:
                 conditions.extend([not_terminal, scheduled_day_filter])
@@ -603,7 +604,7 @@ class BookingsService:
                 conditions.extend(
                     [not_terminal, Booking.scheduled_time >= start_of_tomorrow]
                 )
-            order_by = [Booking.scheduled_time.asc()]
+            order_by = [Booking.scheduled_time.asc(), Booking.created_at.desc()]
         elif scheduled_day_filter is not None:
             conditions.append(scheduled_day_filter)
             order_by = [Booking.scheduled_time.asc()]

@@ -222,8 +222,9 @@ def _extract_embedded_leg(text: str, leg: str) -> dict[str, str | None]:
     )
     time_value = None
     if leg == "departure":
+        # Fixed-width lookbehinds only (Python re rejects \s+ in lookbehind).
         time_match = re.search(
-            rf"(?<!disembark(?:ation|ment)\s+)\b{prefix}\s+time\s*:\s*(\d{{1,2}}:\d{{2}}\s*(?:am|pm)?)\b",
+            rf"(?<!disembarkation )(?<!disembarkment )\b{prefix}\s+time\s*:\s*(\d{{1,2}}:\d{{2}}\s*(?:am|pm)?)\b",
             text,
             re.IGNORECASE,
         )

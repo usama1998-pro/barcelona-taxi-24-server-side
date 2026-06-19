@@ -20,6 +20,7 @@ def build_v1_router() -> APIRouter:
     router = APIRouter()
     router.include_router(root_router)
     router.include_router(health_router)
+    router.include_router(logs_router)
     router.include_router(auth_router)
     router.include_router(admin_verification_router)
     router.include_router(admin_driver_link_router)
@@ -31,5 +32,4 @@ def build_v1_router() -> APIRouter:
     router.include_router(routing_router)
     router.include_router(payments_router)
     router.include_router(viator_router)
-    router.include_router(logs_router)
     return router

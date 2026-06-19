@@ -20,6 +20,7 @@ from app.lib.viator_inbox_config import get_hostinger_inbox_config, is_imap_conf
 from app.lib.viator_test_email import (
     get_booking_time_zone,
     is_viator_test_booking_subject,
+    is_viator_test_email_source,
     parse_viator_test_booking_subject,
 )
 from app.modules.viator.booking_fields import ViatorBookingDetails, merge_booking_fields
@@ -341,6 +342,11 @@ class ViatorService:
                 parsed = self._parse_email_for_import(row["subject"])
                 if not parsed:
                     continue
+                if not parsed.get("isTestBooking") and is_viator_test_email_source(
+                    row["source"]
+                ):
+                    parsed["isTestBooking"] = True
+                    parsed["viatorReference"] = ""
 
                 session = _session_factory()()
                 try:
