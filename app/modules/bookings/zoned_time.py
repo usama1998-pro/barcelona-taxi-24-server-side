@@ -3,7 +3,22 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from app.modules.bookings.scheduled_time import get_booking_timezone
+from app.modules.bookings.scheduled_time import PAST_PICKUP_GRACE_MS, get_booking_timezone
+
+
+def as_utc_naive(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def booking_list_now_cutoff_naive(now: datetime | None = None) -> datetime:
+    """Open bookings scheduled before this instant belong in Past."""
+    reference = now or datetime.now(timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    cutoff_ts = reference.timestamp() - (PAST_PICKUP_GRACE_MS / 1000)
+    return datetime.fromtimestamp(cutoff_ts, tz=timezone.utc).replace(tzinfo=None)
 
 
 def zoned_calendar_day_key(

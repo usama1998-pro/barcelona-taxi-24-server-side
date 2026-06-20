@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, delete, func, or_, select, text, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -45,6 +45,8 @@ from app.modules.bookings.trash import (
     trash_purge_deleted_before,
 )
 from app.modules.bookings.zoned_time import (
+    as_utc_naive,
+    booking_list_now_cutoff_naive,
     get_booking_list_scheduled_day_bounds,
     scheduled_calendar_day_bounds,
 )
@@ -304,19 +306,14 @@ class BookingsService:
         pattern = booking_reference_search_like_pattern(raw_query)
         if not pattern:
             return None
-        rows = session.execute(
-            text(
-                """
-                SELECT id
-                FROM Booking
-                WHERE deleted_at IS NULL
-                  AND booking_reference COLLATE utf8mb4_unicode_ci
-                    LIKE :pattern COLLATE utf8mb4_unicode_ci
-                """
-            ),
-            {"pattern": pattern},
-        ).mappings().all()
-        return [row["id"] for row in rows]
+        # Use column-native collation (latin1 on some hosts, utf8mb4 on others).
+        return list(
+            session.scalars(
+                select(Booking.id)
+                .where(Booking.deleted_at.is_(None))
+                .where(Booking.booking_reference.like(pattern))
+            ).all()
+        )
 
     def find_reserved_booking_by_reference(
         self,
@@ -549,8 +546,8 @@ class BookingsService:
         if query.scheduled_on:
             start, end = scheduled_calendar_day_bounds(query.scheduled_on)
             scheduled_day_filter = and_(
-                Booking.scheduled_time >= start,
-                Booking.scheduled_time < end,
+                Booking.scheduled_time >= as_utc_naive(start),
+                Booking.scheduled_time < as_utc_naive(end),
             )
 
         ref_search_ids = (
@@ -564,15 +561,17 @@ class BookingsService:
                 conditions.append(Booking.id.in_(ref_search_ids))
             else:
                 conditions.append(Booking.id == "__booking_ref_search_no_match__")
-            if scheduled_day_filter is not None:
-                conditions.append(scheduled_day_filter)
-            order_by = [Booking.scheduled_time.desc()]
-        elif query.time_scope == BookingTimeScope.past:
-            start_of_today, _ = get_booking_list_scheduled_day_bounds()
+
+        now_cutoff = booking_list_now_cutoff_naive()
+        start_of_today, start_of_tomorrow = get_booking_list_scheduled_day_bounds()
+        start_of_today = as_utc_naive(start_of_today)
+        start_of_tomorrow = as_utc_naive(start_of_tomorrow)
+
+        if query.time_scope == BookingTimeScope.past:
             conditions.append(
                 or_(
                     terminal_or,
-                    and_(not_terminal, Booking.scheduled_time < start_of_today),
+                    and_(not_terminal, Booking.scheduled_time < now_cutoff),
                 )
             )
             if scheduled_day_filter is not None:
@@ -585,12 +584,18 @@ class BookingsService:
             ]
         elif query.time_scope == BookingTimeScope.current:
             if scheduled_day_filter is not None:
-                conditions.extend([not_terminal, scheduled_day_filter])
-            else:
-                start_of_today, start_of_tomorrow = get_booking_list_scheduled_day_bounds()
                 conditions.extend(
                     [
                         not_terminal,
+                        Booking.scheduled_time >= now_cutoff,
+                        scheduled_day_filter,
+                    ]
+                )
+            else:
+                conditions.extend(
+                    [
+                        not_terminal,
+                        Booking.scheduled_time >= now_cutoff,
                         Booking.scheduled_time >= start_of_today,
                         Booking.scheduled_time < start_of_tomorrow,
                     ]
@@ -598,16 +603,27 @@ class BookingsService:
             order_by = [Booking.scheduled_time.asc(), Booking.created_at.desc()]
         elif query.time_scope == BookingTimeScope.upcoming:
             if scheduled_day_filter is not None:
-                conditions.extend([not_terminal, scheduled_day_filter])
-            else:
-                _, start_of_tomorrow = get_booking_list_scheduled_day_bounds()
                 conditions.extend(
-                    [not_terminal, Booking.scheduled_time >= start_of_tomorrow]
+                    [
+                        not_terminal,
+                        Booking.scheduled_time >= now_cutoff,
+                        scheduled_day_filter,
+                    ]
+                )
+            else:
+                conditions.extend(
+                    [
+                        not_terminal,
+                        Booking.scheduled_time >= now_cutoff,
+                        Booking.scheduled_time >= start_of_tomorrow,
+                    ]
                 )
             order_by = [Booking.scheduled_time.asc(), Booking.created_at.desc()]
         elif scheduled_day_filter is not None:
             conditions.append(scheduled_day_filter)
             order_by = [Booking.scheduled_time.asc()]
+        elif ref_search_ids is not None:
+            order_by = [Booking.scheduled_time.desc()]
 
         where_clause = and_(*conditions)
         total = session.scalar(select(func.count()).select_from(Booking).where(where_clause)) or 0
