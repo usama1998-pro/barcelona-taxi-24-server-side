@@ -2,6 +2,7 @@ import asyncio
 import ssl
 from typing import Any
 
+from fastapi import FastAPI, Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -40,3 +41,27 @@ async def ping_database(engine: Engine) -> None:
             connection.execute(text("SELECT 1"))
 
     await asyncio.to_thread(_ping)
+
+
+def get_request_db_engine(request: Request) -> Engine:
+    """
+    Return the app pool engine. Under Passenger/WSGI, FastAPI lifespan may not
+    run, so create the pool on first use and cache it on app.state.
+    """
+    app = request.app
+    engine = getattr(app.state, "db_engine", None)
+    if engine is not None:
+        return engine
+    engine = create_db_engine()
+    app.state.db_engine = engine
+    return engine
+
+
+def ensure_app_db_engine(app: FastAPI) -> Engine:
+    """Eager init for WSGI entrypoints (e.g. passenger_wsgi.py)."""
+    engine = getattr(app.state, "db_engine", None)
+    if engine is not None:
+        return engine
+    engine = create_db_engine()
+    app.state.db_engine = engine
+    return engine

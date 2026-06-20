@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.core.database import ping_database
+from app.core.database import get_request_db_engine, ping_database
 
 router = APIRouter(prefix="/health", tags=["health"])
 
 
 @router.get("/db")
 async def check_database(request: Request) -> dict[str, object]:
-    engine = request.app.state.db_engine
     try:
+        engine = get_request_db_engine(request)
         await ping_database(engine)
         return {"status": "ok", "database": {"status": "up"}}
     except Exception as error:
