@@ -80,7 +80,8 @@ def generate_viator_test_booking_reference() -> str:
 
 def default_test_pickup_date_label() -> str:
     future = datetime.now(ZoneInfo(get_booking_time_zone())) + timedelta(days=7)
-    return f"{future.strftime('%a')}, {future.day} {future.strftime('%b %Y')}"
+    # Match real Viator subjects, e.g. "Sat, Jun 27, 2026" (month before day).
+    return f"{future.strftime('%a')}, {future.strftime('%b')} {future.day}, {future.year}"
 
 
 def build_viator_test_email_subject(pickup_date_label: str | None = None) -> str:

@@ -85,7 +85,23 @@ def main() -> int:
                     print(f"SKIP: product code not allowed: {product!r}")
                     continue
 
-                print(f"WOULD IMPORT: ref={parsed['viatorReference']} product={product}")
+                persist = viator_service._persist_viator_booking(
+                    session,
+                    viator_reference=parsed["viatorReference"],
+                    pickup_date_label=parsed["pickupDateLabel"],
+                    details=details,
+                )
+                if persist.get("error"):
+                    print(f"SKIP: persist error: {persist['error']}")
+                    continue
+                if not persist.get("savedToDb") and not persist.get("alreadyInDatabase"):
+                    print("SKIP: persist failed (unknown)")
+                    continue
+
+                print(
+                    f"WOULD IMPORT: ref={parsed['viatorReference']} product={product} "
+                    f"saved={persist.get('savedToDb')}"
+                )
             finally:
                 session.close()
     finally:

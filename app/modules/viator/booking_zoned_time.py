@@ -9,6 +9,9 @@ from app.lib.viator_test_email import get_booking_time_zone
 _VIATOR_PICKUP_DATE_LABEL_RE = re.compile(
     r"^(?:\w+,\s*)?([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$"
 )
+_VIATOR_PICKUP_DATE_LABEL_DAY_FIRST_RE = re.compile(
+    r"^(?:\w+,\s*)?(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$"
+)
 
 _MONTH_NAME_TO_NUMBER = {
     "jan": 1,
@@ -113,6 +116,17 @@ def calendar_parts_from_pickup_date_label(
             raise ValueError(f"Could not parse Viator travel date: {pickup_date_label}")
         day = int(match.group(2))
         year = int(match.group(3))
+        if day < 1 or day > 31 or year < 2000:
+            raise ValueError(f"Could not parse Viator travel date: {pickup_date_label}")
+        return {"year": year, "month": month, "day": day}
+
+    day_first = _VIATOR_PICKUP_DATE_LABEL_DAY_FIRST_RE.match(trimmed)
+    if day_first:
+        month = _MONTH_NAME_TO_NUMBER.get(day_first.group(2).lower())
+        if not month:
+            raise ValueError(f"Could not parse Viator travel date: {pickup_date_label}")
+        day = int(day_first.group(1))
+        year = int(day_first.group(3))
         if day < 1 or day > 31 or year < 2000:
             raise ValueError(f"Could not parse Viator travel date: {pickup_date_label}")
         return {"year": year, "month": month, "day": day}
