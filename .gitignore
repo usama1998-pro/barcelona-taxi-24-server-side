@@ -13,8 +13,8 @@ ENV/
 .env.*
 !.env.example
 
-# Logs
-logs/
+# Runtime log output (not app/api/v1/logs or app/modules/logs source)
+/logs/
 *.log
 
 # Test / coverage
