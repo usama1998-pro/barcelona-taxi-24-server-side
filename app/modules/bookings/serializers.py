@@ -2,19 +2,25 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.db.models.booking import Booking
 from app.db.models.driver import Driver
 from app.db.models.user import User
 from app.lib.booking_reference import display_booking_reference
+from app.lib.booking_source import is_website_booking
+from app.modules.bookings.scheduled_time import get_booking_timezone
 
 
 def _iso_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
+    tz = ZoneInfo(get_booking_timezone())
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    utc = value.astimezone(timezone.utc)
+        aware = value.replace(tzinfo=tz)
+    else:
+        aware = value
+    utc = aware.astimezone(timezone.utc)
     millis = int(utc.microsecond / 1000)
     return utc.strftime("%Y-%m-%dT%H:%M:%S") + f".{millis:03d}Z"
 
@@ -46,6 +52,7 @@ def _serialize_driver(driver: Driver | None) -> dict[str, Any] | None:
 
 
 def to_public_booking(booking: Booking) -> dict[str, Any]:
+    show_web_passenger_details = is_website_booking(booking)
     return {
         "uuid": booking.uuid,
         "bookingReference": display_booking_reference(booking.booking_reference),
@@ -61,11 +68,11 @@ def to_public_booking(booking: Booking) -> dict[str, Any]:
         "scheduledTime": _iso_datetime(booking.scheduled_time),
         "price": booking.price,
         "status": booking.status,
-        "luggageCount": booking.luggage_count,
+        "luggageCount": booking.luggage_count if show_web_passenger_details else 0,
         "passengerCount": booking.passenger_count,
-        "infantCarrierCount": booking.infant_carrier_count,
-        "childSeatCount": booking.child_seat_count,
-        "boosterCount": booking.booster_count,
+        "infantCarrierCount": booking.infant_carrier_count if show_web_passenger_details else 0,
+        "childSeatCount": booking.child_seat_count if show_web_passenger_details else 0,
+        "boosterCount": booking.booster_count if show_web_passenger_details else 0,
         "note": booking.note,
         "createdAt": _iso_datetime(booking.created_at),
         "completedAt": _iso_datetime(booking.completed_at),

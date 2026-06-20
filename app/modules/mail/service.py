@@ -14,7 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models.booking import Booking
-from app.lib.booking_reference import display_booking_reference
+from app.lib.booking_source import is_website_booking_public
+from app.modules.bookings.serializers import to_public_booking
 from app.lib.mail_config import (
     SmtpConfig,
     get_booking_notify_email,
@@ -30,48 +31,7 @@ def _booking_time_zone() -> str:
 
 
 def _serialize_public_booking(booking: Booking) -> dict[str, Any]:
-    user = booking.user
-    driver = booking.driver
-    return {
-        "uuid": booking.uuid,
-        "bookingReference": display_booking_reference(booking.booking_reference),
-        "userId": booking.user_id,
-        "driverId": booking.driver_id,
-        "customerName": booking.customer_name,
-        "customerEmail": booking.customer_email,
-        "customerPhone": booking.customer_phone,
-        "flightNumber": booking.flight_number,
-        "returnTime": booking.return_time.isoformat() if booking.return_time else None,
-        "pickupLocation": booking.pickup_location,
-        "dropoffLocation": booking.dropoff_location,
-        "scheduledTime": booking.scheduled_time.isoformat(),
-        "price": booking.price,
-        "status": booking.status,
-        "luggageCount": booking.luggage_count,
-        "passengerCount": booking.passenger_count,
-        "infantCarrierCount": booking.infant_carrier_count,
-        "childSeatCount": booking.child_seat_count,
-        "boosterCount": booking.booster_count,
-        "note": booking.note,
-        "createdAt": booking.created_at.isoformat(),
-        "completedAt": booking.completed_at.isoformat() if booking.completed_at else None,
-        "user": {
-            "id": user.id,
-            "fullName": user.full_name,
-            "email": user.email,
-            "phone": user.phone,
-        }
-        if user
-        else None,
-        "driver": {
-            "id": driver.id,
-            "name": driver.name,
-            "email": driver.email,
-            "phone": driver.phone,
-        }
-        if driver
-        else None,
-    }
+    return to_public_booking(booking)
 
 
 def find_one_public_by_uuid(session: Session, uuid: str) -> dict[str, Any]:
@@ -176,9 +136,10 @@ def _build_booking_details_html(booking: dict[str, Any]) -> str:
     if return_time:
         rows.append(_build_detail_row("Return date & time", _format_scheduled_time(return_time)))
     rows.append(_build_detail_row("Passengers", str(booking["passengerCount"])))
-    rows.append(_build_detail_row("Luggage pieces", str(booking["luggageCount"])))
-    if child_seats:
-        rows.append(_build_detail_row("Child seats", child_seats))
+    if is_website_booking_public(booking):
+        rows.append(_build_detail_row("Luggage pieces", str(booking["luggageCount"])))
+        if child_seats:
+            rows.append(_build_detail_row("Child seats", child_seats))
     if flight:
         rows.append(_build_detail_row("Flight number", flight))
     if note:

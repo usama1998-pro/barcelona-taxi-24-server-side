@@ -15,38 +15,10 @@ from app.db.models.booking import Booking
 from app.db.models.user import User
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
 from app.lib.booking_reference import display_booking_reference, normalize_booking_reference
+from app.modules.bookings.zoned_time import utc_aware_to_booking_db_naive
 from app.modules.viator.parse_scheduled_time import assert_pickup_not_in_past, parse_scheduled_time
 
 logger = logging.getLogger(__name__)
-
-
-def _extract_location_label(location: dict[str, Any] | None) -> str | None:
-    if not location:
-        return None
-    label = location.get("label")
-    if isinstance(label, str) and label.strip():
-        return label.strip()
-    address = location.get("address")
-    if isinstance(address, str) and address.strip():
-        return address.strip()
-    return None
-
-
-async def _resolve_booking_distance_km(
-    pickup_location: dict[str, Any],
-    dropoff_location: dict[str, Any],
-) -> float | None:
-    from app.modules.routing.service import routing_service
-
-    from_address = _extract_location_label(pickup_location)
-    to_address = _extract_location_label(dropoff_location)
-    if not from_address or not to_address:
-        return None
-    try:
-        return await routing_service.get_driving_distance_km(from_address, to_address)
-    except Exception as error:
-        logger.warning("Booking distance lookup failed: %s", error)
-        return None
 
 
 def find_reserved_booking_by_reference(
@@ -153,10 +125,6 @@ async def _create_from_viator_impl(
     scheduled_time = parse_scheduled_time(dto["scheduledTime"])
     assert_pickup_not_in_past(scheduled_time)
 
-    distance_km = await _resolve_booking_distance_km(
-        dto["pickupLocation"],
-        dto["dropoffLocation"],
-    )
     computed_price = calculate_booking_price(
         BookingPriceInputs(
             passenger_count=dto["passengerCount"],
@@ -165,7 +133,7 @@ async def _create_from_viator_impl(
             child_seat_count=dto.get("childSeatCount") or 0,
             booster_count=dto.get("boosterCount") or 0,
             is_return_trip=bool(dto.get("returnTime")),
-            distance_km=distance_km,
+            distance_km=None,
         )
     )
 
@@ -180,11 +148,13 @@ async def _create_from_viator_impl(
         customer_phone=dto.get("customerPhone"),
         flight_number=dto.get("flightNumber"),
         return_time=(
-            parse_scheduled_time(dto["returnTime"]) if dto.get("returnTime") else None
+            utc_aware_to_booking_db_naive(parse_scheduled_time(dto["returnTime"]))
+            if dto.get("returnTime")
+            else None
         ),
         pickup_location=dto["pickupLocation"],
         dropoff_location=dto["dropoffLocation"],
-        scheduled_time=scheduled_time.replace(tzinfo=None),
+        scheduled_time=utc_aware_to_booking_db_naive(scheduled_time),
         price=float(computed_price),
         status=dto.get("status") or "PENDING",
         luggage_count=dto.get("luggageCount") or 0,

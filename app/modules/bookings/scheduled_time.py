@@ -9,7 +9,11 @@ PAST_PICKUP_GRACE_MS = 60_000
 
 
 def get_booking_timezone() -> str:
-    return (os.getenv("TZ") or "").strip() or "Europe/Madrid"
+    """IANA zone for pickup calendar days and list tabs (`BOOKING_TZ`, then `TZ`)."""
+    explicit = (os.getenv("BOOKING_TZ") or os.getenv("TZ") or "").strip()
+    if explicit:
+        return explicit
+    return "Europe/Madrid"
 
 
 def parse_scheduled_time(iso_or_date: str | datetime) -> datetime:

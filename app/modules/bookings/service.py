@@ -27,9 +27,9 @@ from app.lib.booking_reference import (
     trashed_booking_reference,
     viator_references_for_booking,
 )
+from app.lib.booking_source import is_viator_booking
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.bookings.scheduled_time import (
-    assert_pickup_not_in_past,
     parse_scheduled_time,
 )
 from app.modules.mail.service import mail_service
@@ -45,10 +45,9 @@ from app.modules.bookings.trash import (
     trash_purge_deleted_before,
 )
 from app.modules.bookings.zoned_time import (
-    as_utc_naive,
-    booking_list_now_cutoff_naive,
-    get_booking_list_scheduled_day_bounds,
+    get_booking_list_scheduled_day_bounds_db_naive,
     scheduled_calendar_day_bounds,
+    utc_aware_to_booking_db_naive,
 )
 
 logger = logging.getLogger(__name__)
@@ -405,7 +404,7 @@ class BookingsService:
         infant_carrier_count = dto.infant_carrier_count or 0
         child_seat_count = dto.child_seat_count or 0
         booster_count = dto.booster_count or 0
-        skip_distance_lookup = self._is_app_guest_booking_email(
+        skip_distance_lookup = is_viator_import or self._is_app_guest_booking_email(
             str(dto.customer_email) if dto.customer_email else None
         )
         distance_km = self._resolve_booking_distance_km(
@@ -432,8 +431,9 @@ class BookingsService:
                 detail=f"User {user_id} not found",
             )
 
-        scheduled_time = parse_scheduled_time(dto.scheduled_time)
-        assert_pickup_not_in_past(scheduled_time)
+        scheduled_time = utc_aware_to_booking_db_naive(
+            parse_scheduled_time(dto.scheduled_time),
+        )
 
         driver_id: str | None = None
         if dto.driver_id:
@@ -466,7 +466,9 @@ class BookingsService:
                 customer_email=str(dto.customer_email) if dto.customer_email else None,
                 customer_phone=dto.customer_phone,
                 flight_number=dto.flight_number,
-                return_time=parse_scheduled_time(dto.return_time) if dto.return_time else None,
+                return_time=utc_aware_to_booking_db_naive(parse_scheduled_time(dto.return_time))
+                if dto.return_time
+                else None,
                 pickup_location=dto.pickup_location,
                 dropoff_location=dto.dropoff_location,
                 scheduled_time=scheduled_time,
@@ -545,9 +547,11 @@ class BookingsService:
         scheduled_day_filter = None
         if query.scheduled_on:
             start, end = scheduled_calendar_day_bounds(query.scheduled_on)
+            start_db = utc_aware_to_booking_db_naive(start)
+            end_db = utc_aware_to_booking_db_naive(end)
             scheduled_day_filter = and_(
-                Booking.scheduled_time >= as_utc_naive(start),
-                Booking.scheduled_time < as_utc_naive(end),
+                Booking.scheduled_time >= start_db,
+                Booking.scheduled_time < end_db,
             )
 
         ref_search_ids = (
@@ -562,16 +566,13 @@ class BookingsService:
             else:
                 conditions.append(Booking.id == "__booking_ref_search_no_match__")
 
-        now_cutoff = booking_list_now_cutoff_naive()
-        start_of_today, start_of_tomorrow = get_booking_list_scheduled_day_bounds()
-        start_of_today = as_utc_naive(start_of_today)
-        start_of_tomorrow = as_utc_naive(start_of_tomorrow)
+        start_of_today, start_of_tomorrow = get_booking_list_scheduled_day_bounds_db_naive()
 
         if query.time_scope == BookingTimeScope.past:
             conditions.append(
                 or_(
                     terminal_or,
-                    and_(not_terminal, Booking.scheduled_time < now_cutoff),
+                    and_(not_terminal, Booking.scheduled_time < start_of_today),
                 )
             )
             if scheduled_day_filter is not None:
@@ -584,18 +585,11 @@ class BookingsService:
             ]
         elif query.time_scope == BookingTimeScope.current:
             if scheduled_day_filter is not None:
-                conditions.extend(
-                    [
-                        not_terminal,
-                        Booking.scheduled_time >= now_cutoff,
-                        scheduled_day_filter,
-                    ]
-                )
+                conditions.extend([not_terminal, scheduled_day_filter])
             else:
                 conditions.extend(
                     [
                         not_terminal,
-                        Booking.scheduled_time >= now_cutoff,
                         Booking.scheduled_time >= start_of_today,
                         Booking.scheduled_time < start_of_tomorrow,
                     ]
@@ -603,18 +597,11 @@ class BookingsService:
             order_by = [Booking.scheduled_time.asc(), Booking.created_at.desc()]
         elif query.time_scope == BookingTimeScope.upcoming:
             if scheduled_day_filter is not None:
-                conditions.extend(
-                    [
-                        not_terminal,
-                        Booking.scheduled_time >= now_cutoff,
-                        scheduled_day_filter,
-                    ]
-                )
+                conditions.extend([not_terminal, scheduled_day_filter])
             else:
                 conditions.extend(
                     [
                         not_terminal,
-                        Booking.scheduled_time >= now_cutoff,
                         Booking.scheduled_time >= start_of_tomorrow,
                     ]
                 )
@@ -768,8 +755,9 @@ class BookingsService:
         if "dropoff_location" in payload:
             updates["dropoff_location"] = payload["dropoff_location"]
         if "scheduled_time" in payload:
-            next_scheduled = parse_scheduled_time(payload["scheduled_time"])
-            assert_pickup_not_in_past(next_scheduled)
+            next_scheduled = utc_aware_to_booking_db_naive(
+                parse_scheduled_time(payload["scheduled_time"]),
+            )
             updates["scheduled_time"] = next_scheduled
 
         next_passenger_count = payload.get("passenger_count", booking.passenger_count)
@@ -782,7 +770,7 @@ class BookingsService:
         next_booster_count = payload.get("booster_count", booking.booster_count)
         if "return_time" in payload:
             next_return_time = (
-                parse_scheduled_time(payload["return_time"])
+                utc_aware_to_booking_db_naive(parse_scheduled_time(payload["return_time"]))
                 if payload["return_time"]
                 else None
             )
@@ -808,7 +796,7 @@ class BookingsService:
         elif seats_or_trip_counts_changed:
             pickup_location = payload.get("pickup_location", booking.pickup_location)
             dropoff_location = payload.get("dropoff_location", booking.dropoff_location)
-            skip_distance_lookup = self._is_app_guest_booking_email(
+            skip_distance_lookup = is_viator_booking(booking) or self._is_app_guest_booking_email(
                 booking.customer_email or (booking.user.email if booking.user else None)
             )
             distance_km = self._resolve_booking_distance_km(
