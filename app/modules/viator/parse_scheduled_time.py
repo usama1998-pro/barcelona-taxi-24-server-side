@@ -11,13 +11,14 @@ from app.modules.viator.booking_zoned_time import (
 )
 
 _TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*(am|pm)?$", re.IGNORECASE)
+_TIME_IN_TEXT_RE = re.compile(r"\b(\d{1,2}:\d{2})\s*(am|pm)?\b", re.IGNORECASE)
 
 
 class ViatorPickupTimeInput(TypedDict, total=False):
     departureTime: str
+    disembarkationTime: str
+    tourGrade: str
     tourGradeCode: str
-    isAirportPickup: bool
-    preferTourGradeCodeTime: bool
 
 
 def _parse_time_parts(time_label: str) -> dict[str, int] | None:
@@ -41,14 +42,36 @@ def _extract_time_from_tour_grade_code(tour_grade_code: str | None) -> str | Non
     return match.group(1) if match else None
 
 
+def _extract_time_from_tour_grade_description(tour_grade: str | None) -> str | None:
+    if not tour_grade:
+        return None
+    match = _TIME_IN_TEXT_RE.search(tour_grade.strip())
+    if not match:
+        return None
+    time_part = match.group(1)
+    meridiem = (match.group(2) or "").strip().lower()
+    return f"{time_part} {meridiem}".strip() if meridiem else time_part
+
+
+def _resolve_tour_grade_pickup_time(input_data: ViatorPickupTimeInput) -> str | None:
+    from_code = _extract_time_from_tour_grade_code(input_data.get("tourGradeCode"))
+    if from_code:
+        return from_code
+    return _extract_time_from_tour_grade_description(input_data.get("tourGrade"))
+
+
 def resolve_viator_pickup_time_label(input_data: ViatorPickupTimeInput) -> str | None:
-    departure = (input_data.get("departureTime") or "").strip()
-    tour_grade_time = _extract_time_from_tour_grade_code(input_data.get("tourGradeCode"))
-    if input_data.get("preferTourGradeCodeTime"):
+    """Pickup slot from tour grade; flight departure/disembarkation are fallbacks only."""
+    tour_grade_time = _resolve_tour_grade_pickup_time(input_data)
+    if tour_grade_time:
         return tour_grade_time
-    if input_data.get("isAirportPickup"):
-        return departure or tour_grade_time
-    return departure or tour_grade_time
+
+    departure = (input_data.get("departureTime") or "").strip()
+    if departure:
+        return departure
+
+    disembarkation = (input_data.get("disembarkationTime") or "").strip()
+    return disembarkation or None
 
 
 def parse_viator_scheduled_time_iso(

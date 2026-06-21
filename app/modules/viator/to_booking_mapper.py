@@ -154,8 +154,6 @@ def map_viator_to_create_booking_dto(input_data: dict[str, Any]) -> dict[str, An
 
     phone = normalize_phone_number((details.get("phone") or "").strip() or "+34000000000")
     customer_name = _resolve_lead_traveler_customer_name(details)
-    airport_pickup = _is_airport_pickup(details)
-    city_to_cruise = is_city_to_cruise_product_code(details.get("productCode"))
     dropoff_at_airport = bool(
         re.search(r"airport|el prat|aeropuerto", details.get("dropoffLocation") or "", re.IGNORECASE)
     )
@@ -172,9 +170,9 @@ def map_viator_to_create_booking_dto(input_data: dict[str, Any]) -> dict[str, An
         pickup_date_label,
         {
             "departureTime": details.get("departureTime"),
+            "disembarkationTime": details.get("disembarkationTime"),
+            "tourGrade": details.get("tourGrade"),
             "tourGradeCode": details.get("tourGradeCode"),
-            "isAirportPickup": airport_pickup,
-            "preferTourGradeCodeTime": dropoff_at_airport or city_to_cruise,
         },
     )
     passenger_count = parse_viator_passenger_count(details.get("travelers"))
