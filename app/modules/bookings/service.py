@@ -30,7 +30,8 @@ from app.lib.booking_reference import (
 from app.lib.booking_source import is_viator_booking
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.bookings.scheduled_time import (
-    parse_scheduled_time,
+    assert_pickup_not_in_past,
+    scheduled_time_for_db,
 )
 from app.modules.mail.service import mail_service
 from app.modules.bookings.schemas import (
@@ -437,9 +438,7 @@ class BookingsService:
                 detail=f"User {user_id} not found",
             )
 
-        scheduled_time = utc_aware_to_booking_db_naive(
-            parse_scheduled_time(dto.scheduled_time),
-        )
+        scheduled_time = scheduled_time_for_db(dto.scheduled_time)
 
         driver_id: str | None = None
         if dto.driver_id:
@@ -472,7 +471,7 @@ class BookingsService:
                 customer_email=str(dto.customer_email) if dto.customer_email else None,
                 customer_phone=dto.customer_phone,
                 flight_number=dto.flight_number,
-                return_time=utc_aware_to_booking_db_naive(parse_scheduled_time(dto.return_time))
+                return_time=scheduled_time_for_db(dto.return_time)
                 if dto.return_time
                 else None,
                 pickup_location=dto.pickup_location,
@@ -763,9 +762,7 @@ class BookingsService:
         if "dropoff_location" in payload:
             updates["dropoff_location"] = payload["dropoff_location"]
         if "scheduled_time" in payload:
-            next_scheduled = utc_aware_to_booking_db_naive(
-                parse_scheduled_time(payload["scheduled_time"]),
-            )
+            next_scheduled = scheduled_time_for_db(payload["scheduled_time"])
             updates["scheduled_time"] = next_scheduled
 
         next_passenger_count = payload.get("passenger_count", booking.passenger_count)
@@ -778,7 +775,7 @@ class BookingsService:
         next_booster_count = payload.get("booster_count", booking.booster_count)
         if "return_time" in payload:
             next_return_time = (
-                utc_aware_to_booking_db_naive(parse_scheduled_time(payload["return_time"]))
+                scheduled_time_for_db(payload["return_time"])
                 if payload["return_time"]
                 else None
             )

@@ -12,6 +12,9 @@ from app.lib.booking_source import is_website_booking
 from app.modules.bookings.scheduled_time import get_booking_timezone
 
 
+from app.modules.bookings.zoned_time import utc_aware_to_booking_db_naive
+
+
 def _iso_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
@@ -23,6 +26,16 @@ def _iso_datetime(value: datetime | None) -> str | None:
     utc = aware.astimezone(timezone.utc)
     millis = int(utc.microsecond / 1000)
     return utc.strftime("%Y-%m-%dT%H:%M:%S") + f".{millis:03d}Z"
+
+
+def _iso_wall_clock_datetime(value: datetime | None) -> str | None:
+    """Pickup/return times are literal wall-clock values — no timezone conversion."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        value = utc_aware_to_booking_db_naive(value)
+    millis = int(value.microsecond / 1000)
+    return value.strftime("%Y-%m-%dT%H:%M:%S") + f".{millis:03d}"
 
 
 def _serialize_user(user: User | None) -> dict[str, Any] | None:
@@ -62,10 +75,10 @@ def to_public_booking(booking: Booking) -> dict[str, Any]:
         "customerEmail": booking.customer_email,
         "customerPhone": booking.customer_phone,
         "flightNumber": booking.flight_number,
-        "returnTime": _iso_datetime(booking.return_time),
+        "returnTime": _iso_wall_clock_datetime(booking.return_time),
         "pickupLocation": booking.pickup_location,
         "dropoffLocation": booking.dropoff_location,
-        "scheduledTime": _iso_datetime(booking.scheduled_time),
+        "scheduledTime": _iso_wall_clock_datetime(booking.scheduled_time),
         "price": booking.price,
         "status": booking.status,
         "luggageCount": booking.luggage_count if show_web_passenger_details else 0,

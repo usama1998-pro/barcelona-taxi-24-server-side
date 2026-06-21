@@ -35,7 +35,11 @@ from app.modules.viator.parse_email_body import (
     parse_viator_booking_reference_from_body,
     parse_viator_email_body,
 )
-from app.modules.viator.parse_scheduled_time import assert_pickup_not_in_past, parse_scheduled_time
+from app.modules.bookings.scheduled_time import (
+    assert_pickup_not_in_past,
+    scheduled_time_for_db,
+)
+from app.modules.bookings.zoned_time import booking_db_naive_to_utc_aware
 from app.modules.viator.parse_subject import parse_viator_new_booking_subject
 from app.modules.viator.to_booking_mapper import map_viator_to_create_booking_dto
 
@@ -158,13 +162,17 @@ class ViatorService:
         return {**parsed, "isTestBooking": False}
 
     def _bump_viator_scheduled_time_if_past(self, scheduled_time_iso: str) -> str:
-        scheduled = parse_scheduled_time(scheduled_time_iso)
+        naive = scheduled_time_for_db(scheduled_time_iso)
         now = datetime.now(timezone.utc)
         guard = 0
-        while scheduled.timestamp() < now.timestamp() and guard < 400:
-            scheduled = scheduled + timedelta(days=1)
+        while (
+            booking_db_naive_to_utc_aware(naive).timestamp() < now.timestamp()
+            and guard < 400
+        ):
+            naive = naive + timedelta(days=1)
             guard += 1
-        return scheduled.isoformat()
+        millis = int(naive.microsecond / 1000)
+        return naive.strftime("%Y-%m-%dT%H:%M:%S") + (f".{millis:03d}" if millis else "")
 
     def _persist_viator_booking(
         self,
@@ -193,7 +201,7 @@ class ViatorService:
                 }
             )
             dto["scheduledTime"] = self._bump_viator_scheduled_time_if_past(dto["scheduledTime"])
-            assert_pickup_not_in_past(parse_scheduled_time(dto["scheduledTime"]))
+            assert_pickup_not_in_past(scheduled_time_for_db(dto["scheduledTime"]))
             booking, created = create_from_viator_sync(session, dto)
             return {
                 "viatorReference": ref,

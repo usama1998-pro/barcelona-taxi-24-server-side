@@ -15,8 +15,10 @@ from app.db.models.booking import Booking
 from app.db.models.user import User
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
 from app.lib.booking_reference import display_booking_reference, normalize_booking_reference
-from app.modules.bookings.zoned_time import utc_aware_to_booking_db_naive
-from app.modules.viator.parse_scheduled_time import assert_pickup_not_in_past, parse_scheduled_time
+from app.modules.bookings.scheduled_time import (
+    assert_pickup_not_in_past,
+    scheduled_time_for_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +124,7 @@ async def _create_from_viator_impl(
             return _serialize_booking(existing), False
 
     user_id = _resolve_viator_booking_user_id(session)
-    scheduled_time = parse_scheduled_time(dto["scheduledTime"])
+    scheduled_time = scheduled_time_for_db(dto["scheduledTime"])
     assert_pickup_not_in_past(scheduled_time)
 
     computed_price = calculate_booking_price(
@@ -148,13 +150,13 @@ async def _create_from_viator_impl(
         customer_phone=dto.get("customerPhone"),
         flight_number=dto.get("flightNumber"),
         return_time=(
-            utc_aware_to_booking_db_naive(parse_scheduled_time(dto["returnTime"]))
+            scheduled_time_for_db(dto["returnTime"])
             if dto.get("returnTime")
             else None
         ),
         pickup_location=dto["pickupLocation"],
         dropoff_location=dto["dropoffLocation"],
-        scheduled_time=utc_aware_to_booking_db_naive(scheduled_time),
+        scheduled_time=scheduled_time,
         price=float(computed_price),
         status=dto.get("status") or "PENDING",
         luggage_count=dto.get("luggageCount") or 0,

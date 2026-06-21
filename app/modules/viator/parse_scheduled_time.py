@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TypedDict
 
 from app.lib.viator_test_email import get_booking_time_zone
-from app.modules.viator.booking_zoned_time import (
-    calendar_parts_from_pickup_date_label,
-    wall_clock_to_utc,
-)
+from app.modules.viator.booking_zoned_time import calendar_parts_from_pickup_date_label
 
 _TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*(am|pm)?$", re.IGNORECASE)
 _TIME_IN_TEXT_RE = re.compile(r"\b(\d{1,2}:\d{2})\s*(am|pm)?\b", re.IGNORECASE)
@@ -97,15 +94,8 @@ def parse_viator_scheduled_time_iso(
             minute = parsed["minute"]
             has_time = True
 
-    scheduled = wall_clock_to_utc(
-        parts["year"],
-        parts["month"],
-        parts["day"],
-        hour,
-        minute,
-        time_zone,
-    )
-    return {"iso": scheduled.isoformat(), "hasTime": has_time}
+    scheduled = datetime(parts["year"], parts["month"], parts["day"], hour, minute)
+    return {"iso": scheduled.strftime("%Y-%m-%dT%H:%M:%S"), "hasTime": has_time}
 
 
 def viator_guest_email(viator_reference: str) -> str:
@@ -123,22 +113,3 @@ def parse_viator_passenger_count(travelers: str | None) -> int:
     return min(value, 20)
 
 
-PAST_PICKUP_GRACE_MS = 60_000
-
-
-def parse_scheduled_time(iso_or_date: str) -> datetime:
-    value = datetime.fromisoformat(iso_or_date.replace("Z", "+00:00"))
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value
-
-
-def assert_pickup_not_in_past(scheduled_time: datetime, now: datetime | None = None) -> None:
-    from fastapi import HTTPException, status
-
-    current = now or datetime.now(timezone.utc)
-    if scheduled_time.timestamp() < current.timestamp() - (PAST_PICKUP_GRACE_MS / 1000):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pickup date and time must be now or in the future.",
-        )
