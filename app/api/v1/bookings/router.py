@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_jwt
+from app.api.v1.bookings.error_handling import handle_booking_errors
 from app.db.session import get_session
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.bookings.schemas import (
@@ -34,6 +35,7 @@ def _list_query(
 
 
 @router.post("")
+@handle_booking_errors("create")
 async def create(
     body: CreateBookingBody,
     session: Annotated[Session, Depends(get_session)],
@@ -42,6 +44,7 @@ async def create(
 
 
 @router.get("")
+@handle_booking_errors("find_all")
 async def find_all(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[AuthenticatedUser, Depends(require_jwt)],
@@ -51,6 +54,7 @@ async def find_all(
 
 
 @router.get("/trash")
+@handle_booking_errors("find_trash")
 async def find_trash(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[AuthenticatedUser, Depends(require_jwt)],
@@ -60,11 +64,13 @@ async def find_trash(
 
 
 @router.post("/trash/purge", status_code=status.HTTP_202_ACCEPTED)
+@handle_booking_errors("purge_trash_batch")
 async def purge_trash_batch():
     return bookings_service.enqueue_purge_trash_batch()
 
 
 @router.post("/trash/clear")
+@handle_booking_errors("clear_trash")
 async def clear_trash(
     session: Annotated[Session, Depends(get_session)],
     _: Annotated[AuthenticatedUser, Depends(require_jwt)],
@@ -73,6 +79,7 @@ async def clear_trash(
 
 
 @router.get("/{uuid}")
+@handle_booking_errors("find_one")
 async def find_one(
     uuid: str,
     session: Annotated[Session, Depends(get_session)],
@@ -82,6 +89,7 @@ async def find_one(
 
 
 @router.patch("/{uuid}")
+@handle_booking_errors("update")
 async def update(
     uuid: str,
     body: UpdateBookingBody,
@@ -92,6 +100,7 @@ async def update(
 
 
 @router.patch("/{uuid}/complete")
+@handle_booking_errors("complete_reservation")
 async def complete_reservation(
     uuid: str,
     session: Annotated[Session, Depends(get_session)],
@@ -101,6 +110,7 @@ async def complete_reservation(
 
 
 @router.delete("/{uuid}")
+@handle_booking_errors("remove")
 async def remove(
     uuid: str,
     session: Annotated[Session, Depends(get_session)],
@@ -110,6 +120,7 @@ async def remove(
 
 
 @router.delete("/{uuid}/remove")
+@handle_booking_errors("remove_reservation")
 async def remove_reservation(
     uuid: str,
     session: Annotated[Session, Depends(get_session)],

@@ -155,9 +155,11 @@ class BookingsService:
             candidate = f"BK-{secrets.token_hex(4).upper()}"
             if not self._is_booking_reference_reserved(session, candidate):
                 return candidate
+        message = "Could not allocate booking reference"
+        logger.error(message)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not allocate booking reference",
+            detail=message,
         )
 
     def _resolve_or_create_public_booking_user_id(
@@ -233,9 +235,13 @@ class BookingsService:
             )
             return any_staff.id
 
+        message = (
+            "Cannot save Viator booking: no staff user found to attach booking owner."
+        )
+        logger.error(message)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Cannot save Viator booking: no staff user found to attach booking owner.",
+            detail=message,
         )
 
     @staticmethod
@@ -493,9 +499,11 @@ class BookingsService:
 
         persisted = self._load_booking(session, booking.uuid, active_only=False)
         if persisted is None:
+            message = "Booking was not persisted"
+            logger.error("%s (uuid=%s)", message, booking.uuid)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Booking was not persisted",
+                detail=message,
             )
 
         public_booking = to_public_booking(persisted)
