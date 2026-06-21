@@ -41,6 +41,7 @@ _VIATOR_INLINE_FIELDS: list[tuple[str, list[str]]] = [
         ],
     ),
     ("arrivalAirline", ["Arrival Airline"]),
+    ("arrivalTime", ["Arrival Time"]),
     ("disembarkationTime", ["Disembarkation Time", "Disembarkment Time"]),
     (
         "departureFlightNo",
@@ -132,6 +133,24 @@ def _sanitize_value(raw: str) -> str | None:
     return value or None
 
 
+def _sanitize_airline(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    value = re.sub(r"\s+", " ", raw).strip()
+    value = re.split(
+        r"\s+(?:arrival|departure)\s+(?:time|flight|airline)\s*(?:no\.?|number)?\s*:",
+        value,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0].strip()
+    if re.search(r"\d{1,2}:\d{2}\s*(?:am|pm)?|\btime\b", value, re.IGNORECASE):
+        return None
+    value = value.strip(" ,;-")
+    if not value or len(value) > 40:
+        return None
+    return _sanitize_value(value)
+
+
 def _sanitize_flight_number(raw: str | None) -> str | None:
     if not raw:
         return None
@@ -221,7 +240,7 @@ def _extract_embedded_leg(text: str, leg: str) -> dict[str, str | None]:
         re.IGNORECASE,
     )
     time_value = None
-    if leg == "departure":
+    if leg in ("arrival", "departure"):
         # Fixed-width lookbehinds only (Python re rejects \s+ in lookbehind).
         time_match = re.search(
             rf"(?<!disembarkation )(?<!disembarkment )\b{prefix}\s+time\s*:\s*(\d{{1,2}}:\d{{2}}\s*(?:am|pm)?)\b",
@@ -230,7 +249,7 @@ def _extract_embedded_leg(text: str, leg: str) -> dict[str, str | None]:
         )
         time_value = time_match.group(1) if time_match else None
     if airline:
-        out["airline"] = _sanitize_value(airline.group(1))
+        out["airline"] = _sanitize_airline(airline.group(1))
     if flight:
         out["flightNo"] = _sanitize_flight_number(flight.group(1))
     if time_value:
@@ -248,6 +267,8 @@ def _apply_embedded_leg_from_pickup(fields: ViatorBookingDetails) -> None:
         fields["arrivalAirline"] = arrival["airline"]
     if not fields.get("arrivalFlightNo") and arrival.get("flightNo"):
         fields["arrivalFlightNo"] = arrival["flightNo"]
+    if not fields.get("arrivalTime") and arrival.get("time"):
+        fields["arrivalTime"] = arrival["time"]
     if not fields.get("departureAirline") and departure.get("airline"):
         fields["departureAirline"] = departure["airline"]
     if not fields.get("departureFlightNo") and departure.get("flightNo"):
@@ -257,8 +278,11 @@ def _apply_embedded_leg_from_pickup(fields: ViatorBookingDetails) -> None:
 
 
 def _normalize_flight_and_time_fields(fields: ViatorBookingDetails) -> None:
+    fields["arrivalAirline"] = _sanitize_airline(fields.get("arrivalAirline"))
+    fields["departureAirline"] = _sanitize_airline(fields.get("departureAirline"))
     fields["arrivalFlightNo"] = _sanitize_flight_number(fields.get("arrivalFlightNo"))
     fields["departureFlightNo"] = _sanitize_flight_number(fields.get("departureFlightNo"))
+    fields["arrivalTime"] = _sanitize_time_label(fields.get("arrivalTime"))
     fields["departureTime"] = _sanitize_time_label(fields.get("departureTime"))
     fields["disembarkationTime"] = _sanitize_time_label(fields.get("disembarkationTime"))
 
@@ -270,7 +294,7 @@ def _clean_pickup_location_label(raw: str | None) -> str | None:
     value = re.sub(r"\s+special\s+requirements\s*:.*", "", value, flags=re.IGNORECASE).strip()
     value = re.sub(r"\s+boarding\s+time\s*:.*", "", value, flags=re.IGNORECASE).strip()
     value = re.sub(
-        r"\s+arrival\s+(?:flight|airline)\s*(?:no\.?|number)?\s*:.*",
+        r"\s+arrival\s+(?:flight|airline|time)\s*(?:no\.?|number)?\s*:.*",
         "",
         value,
         flags=re.IGNORECASE,

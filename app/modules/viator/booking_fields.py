@@ -17,6 +17,7 @@ class ViatorBookingDetails(TypedDict, total=False):
     specialRequirements: str
     arrivalFlightNo: str
     arrivalAirline: str
+    arrivalTime: str
     disembarkationTime: str
     departureFlightNo: str
     departureTime: str
