@@ -28,7 +28,13 @@ _VIATOR_INLINE_FIELDS: list[tuple[str, list[str]]] = [
     ("cruiseShipName", ["Cruise Ship Name", "Cruise Ship"]),
     (
         "pickupLocation",
-        ["Hotel Pickup", "Pickup Location", "Meeting Point", "Port Pickup"],
+        [
+            "Hotel Pickup",
+            "Pickup Location",
+            "Pick up Location",
+            "Meeting Point",
+            "Port Pickup",
+        ],
     ),
     (
         "arrivalFlightNo",
