@@ -109,8 +109,46 @@ VIATOR_CITY_TO_CRUISE_PRODUCT_CODES = [
     "419333P32",
 ]
 
+VIATOR_CRUISE_PORT_TO_AIRPORT_PRODUCT_CODES = [
+    "406570P8",
+    "406570P15",
+    "406570P17",
+    "406570P27",
+    "406570P29",
+    "406570P58",
+    "406570P59",
+    "419333P33",
+    "419333P31",
+    "419333P30",
+    "419333P24",
+    "419333P22",
+    "419333P17",
+    "419333P9",
+]
+
+VIATOR_CITY_TO_AIRPORT_PRODUCT_CODES = [
+    "419333P1",
+    "419333P2",
+    "419333P5",
+    "419333P10",
+    "419333P16",
+    "419333P27",
+    "406570P5",
+    "406570P11",
+    "406570P12",
+    "406570P18",
+    "406570P30",
+    "406570P31",
+    "406570P33",
+    "406570P37",
+    "406570P59",
+]
+
 _ALLOWED_SET = frozenset(VIATOR_ALLOWED_PRODUCT_CODES)
+_CRUISE_TO_CITY_SET = frozenset(VIATOR_CRUISE_TO_CITY_PRODUCT_CODES)
 _CITY_TO_CRUISE_SET = frozenset(VIATOR_CITY_TO_CRUISE_PRODUCT_CODES)
+_CRUISE_PORT_TO_AIRPORT_SET = frozenset(VIATOR_CRUISE_PORT_TO_AIRPORT_PRODUCT_CODES)
+_CITY_TO_AIRPORT_SET = frozenset(VIATOR_CITY_TO_AIRPORT_PRODUCT_CODES)
 
 
 def normalize_viator_product_code(raw: str | None) -> str | None:
@@ -130,6 +168,21 @@ def is_allowed_viator_product_code(code: str | None) -> bool:
 def is_city_to_cruise_product_code(code: str | None) -> bool:
     normalized = normalize_viator_product_code(code)
     return bool(normalized and normalized in _CITY_TO_CRUISE_SET)
+
+
+def is_cruise_to_city_product_code(code: str | None) -> bool:
+    normalized = normalize_viator_product_code(code)
+    return bool(normalized and normalized in _CRUISE_TO_CITY_SET)
+
+
+def is_cruise_port_to_airport_product_code(code: str | None) -> bool:
+    normalized = normalize_viator_product_code(code)
+    return bool(normalized and normalized in _CRUISE_PORT_TO_AIRPORT_SET)
+
+
+def is_city_to_airport_product_code(code: str | None) -> bool:
+    normalized = normalize_viator_product_code(code)
+    return bool(normalized and normalized in _CITY_TO_AIRPORT_SET)
 
 
 def pick_random_allowed_viator_product_code() -> str:

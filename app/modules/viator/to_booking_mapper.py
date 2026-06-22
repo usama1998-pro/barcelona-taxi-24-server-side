@@ -4,7 +4,12 @@ import re
 from typing import Any
 
 from app.common.utils.phone import normalize_phone_number
-from app.lib.viator_allowed_products import is_city_to_cruise_product_code
+from app.lib.viator_allowed_products import (
+    is_city_to_airport_product_code,
+    is_city_to_cruise_product_code,
+    is_cruise_port_to_airport_product_code,
+    is_cruise_to_city_product_code,
+)
 from app.modules.viator.booking_fields import ViatorBookingDetails
 from app.modules.viator.parse_scheduled_time import (
     parse_viator_passenger_count,
@@ -104,14 +109,24 @@ def _is_airport_pickup(details: ViatorBookingDetails) -> bool:
     return bool(AIRPORT_PATTERN.search(details.get("pickupLocation") or ""))
 
 
+def _is_cruise_ship_pickup_product(product_code: str | None) -> bool:
+    return is_cruise_to_city_product_code(
+        product_code
+    ) or is_cruise_port_to_airport_product_code(product_code)
+
+
+def _is_cruise_ship_dropoff_product(product_code: str | None) -> bool:
+    return is_city_to_cruise_product_code(product_code)
+
+
 def resolve_viator_pickup_location_label(details: ViatorBookingDetails) -> str | None:
-    if not is_city_to_cruise_product_code(details.get("productCode")):
+    if not _is_cruise_ship_pickup_product(details.get("productCode")):
         return details.get("pickupLocation")
     return (details.get("cruiseShipName") or "").strip() or details.get("pickupLocation")
 
 
 def resolve_viator_dropoff_location_label(details: ViatorBookingDetails) -> str | None:
-    if not is_city_to_cruise_product_code(details.get("productCode")):
+    if not _is_cruise_ship_dropoff_product(details.get("productCode")):
         return details.get("dropoffLocation")
     return (details.get("cruiseShipName") or "").strip() or details.get("dropoffLocation")
 
@@ -154,8 +169,14 @@ def map_viator_to_create_booking_dto(input_data: dict[str, Any]) -> dict[str, An
 
     phone = normalize_phone_number((details.get("phone") or "").strip() or "+34000000000")
     customer_name = _resolve_lead_traveler_customer_name(details)
-    dropoff_at_airport = bool(
-        re.search(r"airport|el prat|aeropuerto", details.get("dropoffLocation") or "", re.IGNORECASE)
+    dropoff_at_airport = is_cruise_port_to_airport_product_code(
+        details.get("productCode")
+    ) or is_city_to_airport_product_code(details.get("productCode")) or bool(
+        re.search(
+            r"airport|el prat|aeropuerto",
+            details.get("dropoffLocation") or "",
+            re.IGNORECASE,
+        )
     )
     flight = _build_flight_info(details)
     pickup_label = resolve_viator_pickup_location_label(details)
