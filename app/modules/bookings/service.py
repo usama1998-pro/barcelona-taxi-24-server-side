@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import secrets
@@ -16,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.common.utils.ids import new_id
 from app.common.utils.password import hash_password
+from app.lib.async_bridge import run_coroutine_sync
 from app.db.models.booking import Booking
 from app.db.models.driver import Driver
 from app.db.models.user import User
@@ -88,7 +88,7 @@ class BookingsService:
         from app.modules.routing.service import routing_service
 
         try:
-            return asyncio.run(
+            return run_coroutine_sync(
                 routing_service.get_driving_distance_km(from_label, to_label)
             )
         except Exception as error:
@@ -97,7 +97,7 @@ class BookingsService:
 
     @staticmethod
     def _send_booking_emails(booking: dict[str, Any]) -> dict[str, bool]:
-        return asyncio.run(mail_service.send_booking_emails(booking))
+        return run_coroutine_sync(mail_service.send_booking_emails(booking))
 
     @staticmethod
     def _is_app_guest_booking_email(email: str | None) -> bool:

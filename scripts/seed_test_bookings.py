@@ -15,6 +15,7 @@ APP_URL/API_BASE_URL instead (local API must be running).
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import urllib.error
@@ -24,6 +25,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
+from app.lib.mail_config import get_booking_notify_email
 from app.modules.bookings.schemas import CreateBookingBody
 from app.modules.bookings.service import bookings_service
 from scripts._bootstrap import api_base_url, app_url_looks_local, bootstrap, db_session
@@ -124,6 +126,16 @@ def estimate_website_price(
     )
 
 
+def website_test_customer_email() -> str:
+    override = (os.getenv("SEED_TEST_CUSTOMER_EMAIL") or "").strip().lower()
+    if override:
+        return override
+    notify = get_booking_notify_email()
+    if notify:
+        return notify
+    return "website.test@barcelonataxi24.com"
+
+
 def build_website_payload(scheduled_time: str) -> dict:
     quote = {
         "routeType": "fromAirport",
@@ -134,7 +146,7 @@ def build_website_payload(scheduled_time: str) -> dict:
     pickup_location, dropoff_location = build_booking_locations(quote, flight)
     return {
         "customerName": "Website Test Passenger",
-        "customerEmail": "website.test@barcelonataxi24.com",
+        "customerEmail": website_test_customer_email(),
         "customerPhone": "+34 600 111 222",
         "flightNumber": flight,
         "pickupLocation": pickup_location,
