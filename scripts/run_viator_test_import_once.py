@@ -12,7 +12,7 @@ import urllib.request
 
 from sqlalchemy import text
 
-from scripts._bootstrap import api_base_url, bootstrap, db_engine
+from scripts._bootstrap import api_base_url, app_url_looks_local, bootstrap, db_engine
 
 
 def post_inbox_check(base_url: str) -> dict:
@@ -39,7 +39,14 @@ def main() -> int:
         print(f"POST {base_url}/viator/inbox/check failed with {error.code}")
         return 1
     except urllib.error.URLError as error:
-        print(f"Could not reach API at {base_url}: {error.reason}")
+        reason = getattr(error, "reason", error)
+        print(f"Could not reach API at {base_url}/viator/inbox/check ({reason}).")
+        if app_url_looks_local():
+            print(
+                "APP_URL points to localhost, which is usually unreachable from CLI on "
+                "shared hosting. Set APP_URL to your public API URL, or use "
+                "API_BASE_URL=https://your-domain.com/api/v1"
+            )
         return 1
 
     with db_engine() as engine:

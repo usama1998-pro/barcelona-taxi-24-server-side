@@ -5,8 +5,11 @@ Usage:
   python -m scripts.seed_test_bookings
   python -m scripts.seed_test_bookings --website
   python -m scripts.seed_test_bookings --app
+  python -m scripts.seed_test_bookings --http
 
-Requires the NestJS API running (APP_URL in .env, default http://localhost:3000).
+By default uses the bookings service + database directly (works on production
+shared hosting where localhost HTTP is unavailable). Pass --http to POST via
+APP_URL/API_BASE_URL instead (local API must be running).
 """
 
 from __future__ import annotations
@@ -18,8 +21,12 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
+
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
-from scripts._bootstrap import api_base_url, bootstrap
+from app.modules.bookings.schemas import CreateBookingBody
+from app.modules.bookings.service import bookings_service
+from scripts._bootstrap import api_base_url, app_url_looks_local, bootstrap, db_session
 
 BARCELONA_AIRPORT = "Barcelona-El Prat International Airport (BCN)"
 AIRPORT_LABEL = re.compile(
@@ -176,6 +183,20 @@ def build_app_payload(scheduled_time: str) -> dict:
     }
 
 
+def _format_http_error(error: urllib.error.HTTPError) -> str:
+    raw = error.read().decode("utf-8", errors="replace")
+    try:
+        parsed = json.loads(raw)
+        message = parsed.get("message") or parsed.get("detail")
+        if isinstance(message, list):
+            return " ".join(str(item) for item in message)
+        if message:
+            return str(message)
+    except json.JSONDecodeError:
+        pass
+    return raw or str(error)
+
+
 def post_booking(base_url: str, body: dict) -> dict:
     payload = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(
@@ -188,31 +209,71 @@ def post_booking(base_url: str, body: dict) -> dict:
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        raw = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(_format_http_error(error)) from error
+    except urllib.error.URLError as error:
+        reason = getattr(error, "reason", error)
+        raise RuntimeError(
+            f"Could not reach API at {base_url}/bookings ({reason}). "
+            "On production, run without --http (default uses the database directly), "
+            "or set APP_URL / API_BASE_URL to your public API URL."
+        ) from error
+
+
+def create_booking_direct(body: dict) -> dict:
+    dto = CreateBookingBody.model_validate(body)
+    with db_session() as session:
         try:
-            parsed = json.loads(raw)
-            message = parsed.get("message")
-            if isinstance(message, list):
-                text = " ".join(str(item) for item in message)
+            return bookings_service.create(session, dto)
+        except HTTPException as error:
+            detail = error.detail
+            if isinstance(detail, list):
+                text = " ".join(str(item) for item in detail)
             else:
-                text = str(message or raw)
-        except json.JSONDecodeError:
-            text = raw or str(error)
-        raise RuntimeError(text) from error
+                text = str(detail)
+            raise RuntimeError(text) from error
 
 
 def expected_icon(source: str) -> str:
     return "globe (website)" if source == "website" else "phone-portrait (app)"
 
 
-def seed_one(base_url: str, label: str, source: str, body: dict) -> None:
-    print(f"\n--- {label} ---")
-    created = post_booking(base_url, body)
+def _print_seed_result(created: dict, source: str, body: dict) -> None:
     email = body.get("customerEmail") or created.get("customerEmail") or "—"
     print(f"  reference:  {created['bookingReference']}")
     print(f"  uuid:       {created['uuid']}")
     print(f"  email:      {email}")
     print(f"  app icon:   {expected_icon(source)}")
+    notifications = created.get("notifications")
+    if isinstance(notifications, dict):
+        print(
+            "  emails:     "
+            f"customer={notifications.get('customerEmailSent')} "
+            f"owner={notifications.get('ownerEmailSent')}"
+        )
+
+
+def seed_one_http(base_url: str, label: str, source: str, body: dict) -> None:
+    print(f"\n--- {label} ---")
+    created = post_booking(base_url, body)
+    _print_seed_result(created, source, body)
+
+
+def seed_one_direct(label: str, source: str, body: dict) -> None:
+    print(f"\n--- {label} ---")
+    created = create_booking_direct(body)
+    _print_seed_result(created, source, body)
+
+
+def use_http_mode(args: set[str]) -> bool:
+    if "--http" in args:
+        return True
+    if "--direct" in args:
+        return False
+    from app.core.config import settings
+
+    if settings.app_env == "production":
+        return False
+    return not app_url_looks_local()
 
 
 def main() -> int:
@@ -221,21 +282,29 @@ def main() -> int:
     website_only = "--website" in args
     app_only = "--app" in args
     both = not website_only and not app_only
+    http_mode = use_http_mode(args)
 
-    base_url = api_base_url()
-    print(f"API: {base_url}/bookings")
+    if http_mode:
+        base_url = api_base_url()
+        print(f"Mode: HTTP → {base_url}/bookings")
+        seed = lambda label, source, body: seed_one_http(base_url, label, source, body)
+    else:
+        print("Mode: direct (bookings service + database)")
+        if app_url_looks_local():
+            print(
+                "Note: APP_URL is localhost; direct mode avoids connection refused on production."
+            )
+        seed = seed_one_direct
 
     try:
         if both or website_only:
-            seed_one(
-                base_url,
+            seed(
                 "Website booking (POST /bookings — same payload as barcelonataxi24.com)",
                 "website",
                 build_website_payload(pickup_iso(48)),
             )
         if both or app_only:
-            seed_one(
-                base_url,
+            seed(
                 "App booking (guest email + airport JSON — same as New Reservation screen)",
                 "app",
                 build_app_payload(pickup_iso(50)),
