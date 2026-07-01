@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import smtplib
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr, make_msgid
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -98,12 +100,29 @@ def _format_child_seats_summary(booking: dict[str, Any]) -> str | None:
     return ", ".join(parts) if parts else None
 
 
-def _booking_customer_email(booking: dict[str, Any]) -> str | None:
-    return (
-        (booking.get("customerEmail") or "").strip().lower()
-        or ((booking.get("user") or {}).get("email") or "").strip().lower()
-        or None
-    )
+def _normalize_email(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if not normalized or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+        return None
+    return normalized
+
+
+def _booking_customer_email(
+    booking: dict[str, Any],
+    *,
+    override: str | None = None,
+) -> str | None:
+    for candidate in (
+        override,
+        booking.get("customerEmail"),
+        ((booking.get("user") or {}).get("email") if isinstance(booking.get("user"), dict) else None),
+    ):
+        normalized = _normalize_email(
+            str(candidate) if candidate is not None else None
+        )
+        if normalized:
+            return normalized
+    return None
 
 
 def _build_detail_row(label: str, value: str) -> str:
@@ -161,11 +180,32 @@ class MailService:
             return "smtp=not-configured"
         return f"from={smtp.user} host={smtp.host}:{smtp.port} secure={smtp.secure}"
 
-    def _send_html(self, smtp: SmtpConfig, to: str, subject: str, html: str) -> None:
+    def _plain_text_from_html(self, html: str) -> str:
+        text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
+        text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"</li>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    def _send_html(
+        self,
+        smtp: SmtpConfig,
+        to: str,
+        subject: str,
+        html: str,
+        *,
+        reply_to: str | None = None,
+    ) -> None:
         message = MIMEMultipart("alternative")
         message["Subject"] = subject
-        message["From"] = f"{smtp.from_name} <{smtp.user}>"
+        message["From"] = formataddr((smtp.from_name, smtp.user))
         message["To"] = to
+        message["Message-ID"] = make_msgid(domain=smtp.user.split("@")[-1])
+        if reply_to:
+            message["Reply-To"] = reply_to
+        plain = self._plain_text_from_html(html)
+        message.attach(MIMEText(plain, "plain", "utf-8"))
         message.attach(MIMEText(html, "html", "utf-8"))
 
         if smtp.secure and smtp.port == 465:
@@ -197,10 +237,12 @@ class MailService:
 
         reference = (booking or {}).get("bookingReference") or "your booking"
         details = _build_booking_details_html(booking) if booking else ""
+        notify_to = get_booking_notify_email()
         logger.info(
-            "Sending booking confirmation: reference=%s to=%s %s",
+            "Sending booking confirmation: reference=%s to=%s reply_to=%s %s",
             reference,
             recipient,
+            notify_to or "none",
             self._smtp_log_context(),
         )
         try:
@@ -214,6 +256,7 @@ class MailService:
                   {f"<h2>Booking details</h2>{details}" if details else ""}
                   <p>We will contact you if anything changes.</p>
                 """,
+                reply_to=notify_to,
             )
             logger.info(
                 "Booking confirmation sent: reference=%s to=%s",
@@ -273,8 +316,17 @@ class MailService:
             )
             return False
 
-    async def send_booking_emails(self, booking: dict[str, Any]) -> dict[str, bool]:
-        customer_email = _booking_customer_email(booking)
+    async def send_booking_emails(
+        self,
+        booking: dict[str, Any],
+        *,
+        customer_email_override: str | None = None,
+    ) -> dict[str, bool]:
+        customer_email = _booking_customer_email(
+            booking,
+            override=customer_email_override,
+        )
+        notify_to = get_booking_notify_email()
         if _is_app_guest_booking_email(customer_email):
             logger.info(
                 "Skipping booking emails for app reservation: reference=%s",
@@ -282,12 +334,30 @@ class MailService:
             )
             return {"customerEmailSent": False, "ownerEmailSent": False}
 
+        logger.info(
+            "Sending booking emails: reference=%s customer=%s owner=%s",
+            booking["bookingReference"],
+            customer_email or "none",
+            notify_to or "none",
+        )
+        if not customer_email:
+            logger.warning(
+                "No customer email for booking %s — skipping customer confirmation",
+                booking["bookingReference"],
+            )
+
         customer_sent = (
             await self.send_booking_confirmation(customer_email, booking)
             if customer_email
             else False
         )
         owner_sent = await self.send_new_booking_alert(booking)
+        logger.info(
+            "Booking emails finished: reference=%s customerEmailSent=%s ownerEmailSent=%s",
+            booking["bookingReference"],
+            customer_sent,
+            owner_sent,
+        )
         return {"customerEmailSent": customer_sent, "ownerEmailSent": owner_sent}
 
     async def send_test_email(self, to: str) -> dict[str, list[str]]:
@@ -330,10 +400,19 @@ class MailService:
         to: str,
         subject: str,
         html: str,
+        *,
+        reply_to: str | None = None,
     ) -> None:
         import asyncio
 
-        await asyncio.to_thread(self._send_html, smtp, to, subject, html)
+        await asyncio.to_thread(
+            self._send_html,
+            smtp,
+            to,
+            subject,
+            html,
+            reply_to=reply_to,
+        )
 
 
 mail_service = MailService()

@@ -96,8 +96,17 @@ class BookingsService:
             return None
 
     @staticmethod
-    def _send_booking_emails(booking: dict[str, Any]) -> dict[str, bool]:
-        return run_coroutine_sync(mail_service.send_booking_emails(booking))
+    def _send_booking_emails(
+        booking: dict[str, Any],
+        *,
+        customer_email: str | None = None,
+    ) -> dict[str, bool]:
+        return run_coroutine_sync(
+            mail_service.send_booking_emails(
+                booking,
+                customer_email_override=customer_email,
+            )
+        )
 
     @staticmethod
     def _is_app_guest_booking_email(email: str | None) -> bool:
@@ -193,6 +202,10 @@ class BookingsService:
 
         by_phone = session.scalar(select(User).where(User.phone == phone))
         if by_phone:
+            if self._is_app_guest_booking_email(by_phone.email) and email != by_phone.email:
+                by_phone.email = email
+                by_phone.full_name = name
+                session.flush()
             return by_phone.id
 
         created = User(
@@ -507,10 +520,16 @@ class BookingsService:
 
         public_booking = to_public_booking(persisted)
         notifications = {"customerEmailSent": False, "ownerEmailSent": False}
+        customer_email_for_mail = (
+            str(dto.customer_email).strip().lower() if dto.customer_email else None
+        )
         emails_skipped = self._should_skip_booking_emails(dto)
         if not emails_skipped:
             try:
-                notifications = self._send_booking_emails(public_booking)
+                notifications = self._send_booking_emails(
+                    public_booking,
+                    customer_email=customer_email_for_mail,
+                )
             except Exception as err:
                 logger.warning(
                     "Booking %s: confirmation emails failed",

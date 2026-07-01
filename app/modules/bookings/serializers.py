@@ -72,7 +72,11 @@ def to_public_booking(booking: Booking) -> dict[str, Any]:
         "userId": booking.user_id,
         "driverId": booking.driver_id,
         "customerName": booking.customer_name,
-        "customerEmail": booking.customer_email,
+        "customerEmail": (
+            str(booking.customer_email).strip().lower()
+            if booking.customer_email
+            else None
+        ),
         "customerPhone": booking.customer_phone,
         "flightNumber": booking.flight_number,
         "returnTime": _iso_wall_clock_datetime(booking.return_time),
