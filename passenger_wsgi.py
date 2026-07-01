@@ -6,7 +6,10 @@ sys.path.insert(0, root)
 os.chdir(root)
 
 from a2wsgi import ASGIMiddleware
+
+from app.core.wsgi_startup import ensure_wsgi_startup
 from app.main import app as fastapi_app
 
+ensure_wsgi_startup(fastapi_app)
+
 application = ASGIMiddleware(fastapi_app)
-# comment

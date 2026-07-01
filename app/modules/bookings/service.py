@@ -507,7 +507,8 @@ class BookingsService:
 
         public_booking = to_public_booking(persisted)
         notifications = {"customerEmailSent": False, "ownerEmailSent": False}
-        if not self._should_skip_booking_emails(dto):
+        emails_skipped = self._should_skip_booking_emails(dto)
+        if not emails_skipped:
             try:
                 notifications = self._send_booking_emails(public_booking)
             except Exception as err:
@@ -516,6 +517,22 @@ class BookingsService:
                     public_booking["uuid"],
                     exc_info=err,
                 )
+        else:
+            logger.info(
+                "Booking %s (%s): emails skipped (app guest or Viator import)",
+                public_booking["bookingReference"],
+                public_booking["uuid"],
+            )
+
+        logger.info(
+            "Booking created: reference=%s uuid=%s customerEmailSent=%s "
+            "ownerEmailSent=%s emailsSkipped=%s",
+            public_booking["bookingReference"],
+            public_booking["uuid"],
+            notifications["customerEmailSent"],
+            notifications["ownerEmailSent"],
+            emails_skipped,
+        )
 
         return {
             **public_booking,

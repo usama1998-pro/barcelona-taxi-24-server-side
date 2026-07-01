@@ -215,6 +215,11 @@ class MailService:
                   <p>We will contact you if anything changes.</p>
                 """,
             )
+            logger.info(
+                "Booking confirmation sent: reference=%s to=%s",
+                reference,
+                recipient,
+            )
             return True
         except Exception:
             logger.exception(
@@ -252,6 +257,11 @@ class MailService:
                   <h2>Booking details</h2>
                   {details}
                 """,
+            )
+            logger.info(
+                "New-booking alert sent: reference=%s to=%s",
+                reference,
+                notify_to,
             )
             return True
         except Exception:
