@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.common.utils.password import hash_password
 from app.db.models.user import User

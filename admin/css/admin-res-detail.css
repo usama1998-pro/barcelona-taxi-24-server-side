@@ -1,0 +1,247 @@
+.admin-res-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+    max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+}
+
+.admin-res-detail {
+  width: 100%;
+  max-width: 680px;
+  max-height: min(92dvh, 92vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  color: #333;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+}
+
+.admin-res-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid #dee2e6;
+  flex-shrink: 0;
+}
+
+.admin-res-detail__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #424242;
+  letter-spacing: 0.02em;
+}
+
+.admin-res-detail__title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-res-detail__header--accent .admin-res-detail__title {
+  color: #fff;
+}
+
+.admin-res-detail__close-x {
+  border: 0;
+  background: transparent;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+  border-radius: 6px;
+}
+
+.admin-res-detail__close-x:hover {
+  background: #f1f3f5;
+  color: #212529;
+}
+
+.admin-res-detail__close-x--on-accent {
+  color: #fff;
+}
+
+.admin-res-detail__close-x--on-accent:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.admin-res-detail__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 0 8px;
+}
+
+.admin-res-detail__loading {
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.admin-res-detail__spinner {
+  animation: admin-res-detail-spin 0.85s linear infinite;
+  color: #29b6f6;
+}
+
+@keyframes admin-res-detail-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.admin-res-detail__error {
+  margin: 0;
+  padding: 20px 16px;
+  color: #dc3545;
+  font-size: 0.9375rem;
+}
+
+.admin-res-detail__section {
+  margin-top: 0;
+}
+
+.admin-res-detail__section + .admin-res-detail__section {
+  margin-top: 0;
+}
+
+.admin-res-detail__section-head {
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  padding: 10px 16px;
+  letter-spacing: 0.01em;
+}
+
+.admin-res-detail__section-body {
+  padding: 14px 16px 16px;
+}
+
+.admin-res-detail__row {
+  display: grid;
+  grid-template-columns: minmax(140px, 42%) 1fr;
+  gap: 8px 12px;
+  align-items: start;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  padding: 6px 0;
+}
+
+.admin-res-detail__label {
+  font-weight: 700;
+  color: #212529;
+}
+
+.admin-res-detail__value {
+  color: #212529;
+  font-weight: 400;
+  word-break: break-word;
+}
+
+.admin-res-detail__tel {
+  color: #0d6efd;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.admin-res-detail__tel:hover {
+  color: #0a58ca;
+}
+
+.admin-res-detail__footer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 8px;
+  flex-wrap: wrap;
+}
+
+.admin-res-detail__qr {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.admin-res-detail__site {
+  flex: 1;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: #495057;
+  min-width: 0;
+}
+
+.admin-res-detail__stamp {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.admin-res-detail__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  flex-shrink: 0;
+  border-top: 1px solid transparent;
+}
+
+.admin-res-detail__btn-close {
+  border: 0;
+  border-radius: 6px;
+  background: #546e7a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  padding: 10px 28px;
+  cursor: pointer;
+}
+
+.admin-res-detail__btn-close:hover {
+  background: #455a64;
+}
+
+@media (max-width: 400px) {
+  .admin-res-detail__row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .admin-res-detail__footer-meta {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-res-detail__site {
+    text-align: left;
+  }
+
+  .admin-res-detail__stamp {
+    text-align: left;
+  }
+}

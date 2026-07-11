@@ -17,6 +17,9 @@ ENV/
 /logs/
 *.log
 
+# Sign-in lockout store (shared with clear_login_lockout script)
+.data/
+
 # Test / coverage
 .pytest_cache/
 .coverage

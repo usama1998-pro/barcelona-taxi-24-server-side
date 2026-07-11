@@ -6,6 +6,12 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.rate_limit import (
+    ADMIN_RATE_LIMIT,
+    check_rate_limit,
+    client_ip,
+    is_admin_throttle_path,
+)
 from app.core.security import extract_access_token
 from app.db.session import get_session
 from app.modules.auth.service import auth_service
@@ -63,6 +69,7 @@ async def require_jwt(
 
 
 async def require_staff_admin(
+    request: Request,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> AuthenticatedUser:
     if user.get("typ") != "user" or not user.get("is_admin"):
@@ -70,10 +77,14 @@ async def require_staff_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Staff admin access required",
         )
+    # `/api/v1/admin/*` is already counted by AdminRateLimitMiddleware.
+    if not is_admin_throttle_path(request.url.path):
+        check_rate_limit(f"admin:{client_ip(request)}", limit=ADMIN_RATE_LIMIT)
     return user
 
 
 async def require_super_admin(
+    request: Request,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> AuthenticatedUser:
     if user.get("typ") != "user" or not user.get("is_admin"):
@@ -86,6 +97,8 @@ async def require_super_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Super admin access required",
         )
+    if not is_admin_throttle_path(request.url.path):
+        check_rate_limit(f"admin:{client_ip(request)}", limit=ADMIN_RATE_LIMIT)
     return user
 
 

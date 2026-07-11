@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_driver_self, require_jwt
+from app.api.deps import require_driver_self, require_jwt, require_staff_admin
 from app.db.session import get_session
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.drivers.schemas import (
@@ -22,6 +22,7 @@ router = APIRouter(prefix="/drivers", tags=["drivers"])
 async def create(
     body: CreateDriverBody,
     session: Annotated[Session, Depends(get_session)],
+    _: Annotated[AuthenticatedUser, Depends(require_staff_admin)],
 ):
     return drivers_service.create(session, body)
 

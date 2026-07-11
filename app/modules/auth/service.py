@@ -13,6 +13,7 @@ from app.core.security import extract_access_token, sign_access_token, verify_ac
 from app.db.models.driver import Driver
 from app.db.models.driver_verification_code import DriverVerificationCode
 from app.db.models.user import User
+from app.modules.auth.login_attempts import login_attempts
 from app.modules.auth.schemas import SigninBody, SignupBody, VerifyCodeBody
 from app.modules.auth.token_revocation import token_revocation
 from app.modules.auth.types import AuthenticatedUser, LoginResponse
@@ -21,10 +22,13 @@ from app.modules.auth.types import AuthenticatedUser, LoginResponse
 class AuthService:
     def signin(self, session: Session, dto: SigninBody) -> LoginResponse:
         email = dto.email.strip().lower()
+        login_attempts.assert_not_locked(email)
+
         user = session.scalar(select(User).where(User.email == email))
         driver = session.scalar(select(Driver).where(Driver.email == email))
 
         if user and user.is_admin and verify_password(dto.password, user.password):
+            login_attempts.clear(email)
             return sign_access_token(
                 sub=user.id,
                 email=user.email,
@@ -36,6 +40,7 @@ class AuthService:
 
         if driver:
             if not verify_password(dto.password, driver.password):
+                login_attempts.record_failure(email)
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid email or password",
@@ -45,6 +50,7 @@ class AuthService:
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Driver account is disabled",
                 )
+            login_attempts.clear(email)
             return sign_access_token(
                 sub=driver.id,
                 email=driver.email,
@@ -54,6 +60,7 @@ class AuthService:
             )
 
         if not user or not verify_password(dto.password, user.password):
+            login_attempts.record_failure(email)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",

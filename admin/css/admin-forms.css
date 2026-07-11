@@ -1,0 +1,355 @@
+.admin-form-shell {
+  --form-blue: #1e88e5;
+  --form-blue-dark: #1565c0;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #f8f9fa;
+}
+
+.admin-form-shell__header {
+  padding: clamp(12px, 2vw, 18px) clamp(12px, 3vw, 24px) 0;
+  text-align: center;
+}
+
+.admin-form-shell__title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2vw + 0.5rem, 1.75rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0e1c31;
+}
+
+.admin-form-shell__subtitle {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.9375rem;
+}
+
+.admin-form-shell__body {
+  padding: clamp(10px, 2vw, 16px) clamp(12px, 3vw, 24px) clamp(20px, 4vw, 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.admin-form-card {
+  width: 100%;
+  max-width: 620px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: clamp(16px, 3vw, 24px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.admin-form-field {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cfd8dc;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 1rem;
+  color: #111827;
+  background: #ffffff;
+}
+
+.admin-form-field::placeholder {
+  color: #9ca3af;
+}
+
+.admin-form-field:focus {
+  outline: none;
+  border-color: var(--form-blue);
+  box-shadow: 0 0 0 3px rgba(30, 136, 229, 0.15);
+}
+
+.admin-form-field--notes {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.admin-form-field--ref {
+  min-height: 44px;
+  resize: vertical;
+}
+
+.admin-form-field--dark {
+  background: var(--form-blue-dark);
+  color: #ffffff;
+  border-color: var(--form-blue-dark);
+  font-weight: 600;
+}
+
+.admin-form-field--dark::placeholder {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.admin-form-pricehint {
+  margin: -4px 0 0;
+  font-size: 0.8125rem;
+  color: var(--form-blue-dark);
+}
+
+.admin-form-pricehint--hidden {
+  display: none;
+}
+
+/* Blue info bar (PU time / date / passenger) */
+.admin-form-bluebar {
+  display: flex;
+  background: var(--form-blue);
+  border-radius: 6px;
+  padding: 10px 8px;
+  gap: 4px;
+}
+
+.admin-form-bluebar--single {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 12px 16px;
+}
+
+.admin-form-bluebar__cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 8px;
+  min-width: 0;
+}
+
+.admin-form-bluebar__cell--divided {
+  border-left: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.admin-form-bluebar__label {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.admin-form-bluebar__underline {
+  height: 2px;
+  background: #ffffff;
+  margin: 3px 0 6px;
+}
+
+.admin-form-bluebar__control {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  width: 100%;
+  padding: 0;
+  text-align: center;
+  color-scheme: dark;
+}
+
+.admin-form-bluebar__control:focus {
+  outline: none;
+}
+
+/* Location / Airport toggle bar */
+.admin-form-locbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--form-blue);
+  border-radius: 6px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+
+.admin-form-locbar__title {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.4px;
+}
+
+.admin-seg-group {
+  display: flex;
+  gap: 6px;
+}
+
+.admin-seg {
+  border: 1px solid #ffffff;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 7px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 90px;
+}
+
+.admin-seg--active {
+  background: #ffffff;
+  color: var(--form-blue);
+}
+
+/* Airport split row (reservation) */
+.admin-form-airport {
+  display: flex;
+  align-items: stretch;
+  background: var(--form-blue);
+  border-radius: 6px;
+  padding: 6px 8px;
+  gap: 4px;
+}
+
+.admin-form-airport__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-size: 1rem;
+  padding: 8px;
+}
+
+.admin-form-airport__input::placeholder {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.admin-form-airport__input:focus {
+  outline: none;
+}
+
+.admin-form-airport__divider {
+  width: 1px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.admin-form-airport__time {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  color: #ffffff;
+}
+
+.admin-form-airport__time span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.admin-form-airport__time input {
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  color-scheme: dark;
+  width: 88px;
+}
+
+.admin-form-airport__time input:focus {
+  outline: none;
+}
+
+/* Passenger stepper */
+.admin-form-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.admin-form-stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.admin-form-stepper__btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.admin-form-stepper__count {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.125rem;
+  min-width: 28px;
+  text-align: center;
+}
+
+/* Read-only computed boxes (invoice) */
+.admin-form-readonly {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cfd8dc;
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: #fafafa;
+  color: #78909c;
+  font-weight: 600;
+}
+
+/* Banners */
+.admin-form-banner {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.admin-form-banner--success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.admin-form-banner--error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+/* Done button */
+.admin-form-done {
+  margin-top: 8px;
+  border: 2px solid var(--form-blue);
+  background: #ffffff;
+  color: var(--form-blue);
+  font: inherit;
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.8px;
+  padding: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.admin-form-done:hover:not(:disabled) {
+  background: var(--form-blue);
+  color: #ffffff;
+}
+
+.admin-form-done:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
