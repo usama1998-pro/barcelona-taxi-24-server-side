@@ -23,6 +23,8 @@ from app.db.models.viator_alert import ViatorAlert
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
 from app.lib.booking_reference import (
     booking_reference_search_like_pattern,
+    booking_reference_trash_like_pattern,
+    canonical_booking_reference,
     normalize_booking_reference,
     trashed_booking_reference,
     viator_references_for_booking,
@@ -132,6 +134,16 @@ class BookingsService:
             str(dto.customer_email) if dto.customer_email else None
         ) or self._is_viator_email_import(dto)
 
+    def _booking_reference_reserved_filter(self, booking_reference: str):
+        """Match the active reference or any trashed rename of the same original ref."""
+        ref = canonical_booking_reference(booking_reference)
+        if not ref:
+            return None
+        return or_(
+            Booking.booking_reference == ref,
+            Booking.booking_reference.like(booking_reference_trash_like_pattern(ref)),
+        )
+
     def _is_booking_reference_reserved(
         self,
         session: Session,
@@ -139,10 +151,10 @@ class BookingsService:
         *,
         exclude_uuid: str | None = None,
     ) -> bool:
-        ref = normalize_booking_reference(booking_reference)
-        if not ref:
+        reserved_filter = self._booking_reference_reserved_filter(booking_reference)
+        if reserved_filter is None:
             return False
-        stmt = select(Booking.id).where(Booking.booking_reference == ref)
+        stmt = select(Booking.id).where(reserved_filter)
         if exclude_uuid:
             stmt = stmt.where(Booking.uuid != exclude_uuid)
         return session.scalar(stmt) is not None
@@ -339,12 +351,12 @@ class BookingsService:
         session: Session,
         booking_reference: str,
     ) -> dict[str, Any] | None:
-        ref = normalize_booking_reference(booking_reference)
-        if not ref:
+        reserved_filter = self._booking_reference_reserved_filter(booking_reference)
+        if reserved_filter is None:
             return None
         row = session.execute(
             select(Booking.uuid, Booking.deleted_at)
-            .where(Booking.booking_reference == ref)
+            .where(reserved_filter)
             .order_by(Booking.deleted_at.asc())
             .limit(1)
         ).first()
@@ -357,13 +369,13 @@ class BookingsService:
         session: Session,
         booking_reference: str,
     ) -> dict[str, Any] | None:
-        ref = normalize_booking_reference(booking_reference)
-        if not ref:
+        reserved_filter = self._booking_reference_reserved_filter(booking_reference)
+        if reserved_filter is None:
             return None
         booking = session.scalar(
             select(Booking)
             .options(*BOOKING_LOAD_OPTIONS)
-            .where(Booking.booking_reference == ref)
+            .where(reserved_filter)
             .order_by(Booking.deleted_at.asc())
             .limit(1)
         )

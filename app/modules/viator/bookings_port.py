@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,12 @@ from app.common.utils.ids import new_id
 from app.db.models.booking import Booking
 from app.db.models.user import User
 from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
-from app.lib.booking_reference import display_booking_reference, normalize_booking_reference
+from app.lib.booking_reference import (
+    booking_reference_trash_like_pattern,
+    canonical_booking_reference,
+    display_booking_reference,
+    normalize_booking_reference,
+)
 from app.modules.bookings.scheduled_time import (
     assert_pickup_not_in_past,
     scheduled_time_for_db,
@@ -23,16 +28,32 @@ from app.modules.bookings.scheduled_time import (
 logger = logging.getLogger(__name__)
 
 
+def _booking_reference_reserved_filter(booking_reference: str):
+    """Match the active reference or any trashed rename of the same original ref.
+
+    A soft-deleted booking is renamed to ``REF#trash-<uuid>``, so an exact match on
+    the original ``REF`` would miss it and let a Viator email re-import recreate the
+    booking. Treat both forms as reserved.
+    """
+    ref = canonical_booking_reference(booking_reference)
+    if not ref:
+        return None, None
+    return ref, or_(
+        Booking.booking_reference == ref,
+        Booking.booking_reference.like(booking_reference_trash_like_pattern(ref)),
+    )
+
+
 def find_reserved_booking_by_reference(
     session: Session,
     booking_reference: str,
 ) -> dict[str, Any] | None:
-    ref = normalize_booking_reference(booking_reference)
-    if not ref:
+    _, reserved_filter = _booking_reference_reserved_filter(booking_reference)
+    if reserved_filter is None:
         return None
     row = session.execute(
         select(Booking.uuid, Booking.deleted_at)
-        .where(Booking.booking_reference == ref)
+        .where(reserved_filter)
         .order_by(Booking.deleted_at.asc())
         .limit(1)
     ).first()
@@ -47,22 +68,22 @@ def is_booking_reference_reserved(
     booking_reference: str,
     exclude_uuid: str | None = None,
 ) -> bool:
-    ref = normalize_booking_reference(booking_reference)
-    if not ref:
+    _, reserved_filter = _booking_reference_reserved_filter(booking_reference)
+    if reserved_filter is None:
         return False
-    query = select(Booking.id).where(Booking.booking_reference == ref)
+    query = select(Booking.id).where(reserved_filter)
     if exclude_uuid:
         query = query.where(Booking.uuid != exclude_uuid)
     return session.scalar(query.limit(1)) is not None
 
 
 def find_by_booking_reference(session: Session, booking_reference: str) -> Booking | None:
-    ref = normalize_booking_reference(booking_reference)
-    if not ref:
+    _, reserved_filter = _booking_reference_reserved_filter(booking_reference)
+    if reserved_filter is None:
         return None
     return session.scalar(
         select(Booking)
-        .where(Booking.booking_reference == ref)
+        .where(reserved_filter)
         .order_by(Booking.deleted_at.asc())
         .limit(1)
     )

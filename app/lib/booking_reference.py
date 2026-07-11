@@ -11,6 +11,20 @@ def normalize_booking_reference(booking_reference: str) -> str:
     return trimmed.upper()
 
 
+def canonical_booking_reference(booking_reference: str) -> str:
+    """Original booking ref without any trash suffix, uppercased."""
+    trimmed = booking_reference.strip()
+    trash_idx = trimmed.lower().find(TRASH_SUFFIX)
+    if trash_idx > 0:
+        return trimmed[:trash_idx].upper()
+    return trimmed.upper()
+
+
+def booking_reference_trash_like_pattern(canonical_ref: str) -> str:
+    """SQL LIKE pattern matching any trashed rename of a canonical reference."""
+    return f"{escape_mysql_like_pattern(canonical_ref)}{TRASH_SUFFIX}%"
+
+
 def display_booking_reference(booking_reference: str) -> str:
     trash_idx = booking_reference.lower().find(TRASH_SUFFIX)
     if trash_idx > 0:
