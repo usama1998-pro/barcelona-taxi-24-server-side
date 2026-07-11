@@ -174,6 +174,33 @@ class ViatorService:
         millis = int(naive.microsecond / 1000)
         return naive.strftime("%Y-%m-%dT%H:%M:%S") + (f".{millis:03d}" if millis else "")
 
+    def _viator_reference_previously_seen(
+        self,
+        session: Session,
+        viator_reference: str,
+    ) -> bool:
+        """True if this Viator reference has ever been imported (alert tombstone exists).
+
+        Viator alerts are retained even after the booking is deleted or purged, so a
+        re-scan of the same email within the inbox lookback window cannot recreate a
+        booking that was intentionally removed.
+        """
+        candidates = {
+            viator_reference,
+            normalize_booking_reference(viator_reference),
+        }
+        candidates.discard("")
+        if not candidates:
+            return False
+        return (
+            session.scalar(
+                select(ViatorAlert.id)
+                .where(ViatorAlert.viator_reference.in_(candidates))
+                .limit(1)
+            )
+            is not None
+        )
+
     def _persist_viator_booking(
         self,
         session: Session,
@@ -189,6 +216,13 @@ class ViatorService:
                 return {
                     "viatorReference": ref,
                     "bookingUuid": reserved["uuid"],
+                    "savedToDb": False,
+                    "alreadyInDatabase": True,
+                }
+            if self._viator_reference_previously_seen(session, viator_reference):
+                # Imported before and later deleted/purged; do not recreate it.
+                return {
+                    "viatorReference": ref,
                     "savedToDb": False,
                     "alreadyInDatabase": True,
                 }
@@ -361,7 +395,11 @@ class ViatorService:
                     if not parsed.get("isTestBooking"):
                         if parsed["viatorReference"] in processed_refs:
                             continue
-                        if is_booking_reference_reserved(session, parsed["viatorReference"]):
+                        if is_booking_reference_reserved(
+                            session, parsed["viatorReference"]
+                        ) or self._viator_reference_previously_seen(
+                            session, parsed["viatorReference"]
+                        ):
                             continue
                     elif self._is_duplicate_test_imap_uid(session, row["uid"]):
                         continue
@@ -391,8 +429,9 @@ class ViatorService:
                         session, row["uid"]
                     ):
                         continue
-                    if not parsed.get("isTestBooking") and is_booking_reference_reserved(
-                        session, viator_reference
+                    if not parsed.get("isTestBooking") and (
+                        is_booking_reference_reserved(session, viator_reference)
+                        or self._viator_reference_previously_seen(session, viator_reference)
                     ):
                         continue
 

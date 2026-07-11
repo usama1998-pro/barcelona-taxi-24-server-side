@@ -5,7 +5,7 @@ import os
 import secrets
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -52,8 +52,20 @@ from app.modules.bookings.zoned_time import (
     scheduled_calendar_day_bounds,
     utc_aware_to_booking_db_naive,
 )
+from app.modules.viator.constants import VIATOR_INBOX_LOOKBACK_HOURS
 
 logger = logging.getLogger(__name__)
+
+
+def _viator_suppression_cutoff_naive() -> datetime:
+    """UTC-naive cutoff before which a Viator email can no longer be re-scanned.
+
+    A purged booking whose source email is older than this can be fully removed
+    (alert included) with no risk of re-import; newer ones keep a small tombstone.
+    """
+    return (
+        datetime.now(timezone.utc) - timedelta(hours=VIATOR_INBOX_LOOKBACK_HOURS)
+    ).replace(tzinfo=None)
 
 TERMINAL_STATUSES = ("completed", "cancelled", "canceled")
 BOOKING_LOAD_OPTIONS = (
@@ -1110,14 +1122,32 @@ class BookingsService:
         booking: Booking,
     ) -> None:
         viator_refs = viator_references_for_booking(booking.booking_reference)
-        session.execute(
-            delete(ViatorAlert).where(
+        # The booking row is removed for good. For any linked Viator alert, only keep
+        # a minimal tombstone WHILE its source email could still be re-scanned by the
+        # inbox importer (within the lookback window); otherwise delete it too. This
+        # blocks re-import right after a purge without letting alerts accumulate.
+        now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+        suppression_cutoff = _viator_suppression_cutoff_naive()
+        alerts = session.scalars(
+            select(ViatorAlert).where(
                 or_(
                     ViatorAlert.booking_uuid == booking.uuid,
                     ViatorAlert.viator_reference.in_(viator_refs),
                 )
             )
-        )
+        ).all()
+        for alert in alerts:
+            received = alert.received_at
+            if received is not None and received.tzinfo is not None:
+                received = received.astimezone(timezone.utc).replace(tzinfo=None)
+            still_reimportable = received is not None and received >= suppression_cutoff
+            if still_reimportable:
+                alert.dismissed_at = now_naive
+                alert.booking_uuid = None
+                alert.subject = ""
+                alert.payload = {}
+            else:
+                session.delete(alert)
         driver_id = booking.driver_id
         session.delete(booking)
         session.flush()
@@ -1132,7 +1162,19 @@ class BookingsService:
                 if driver is not None:
                     driver.is_available = True
 
+    def _sweep_expired_viator_tombstones(self, session: Session) -> None:
+        """Delete suppression tombstones whose email is now outside the re-scan window."""
+        session.execute(
+            delete(ViatorAlert).where(
+                ViatorAlert.booking_uuid.is_(None),
+                ViatorAlert.dismissed_at.is_not(None),
+                ViatorAlert.received_at < _viator_suppression_cutoff_naive(),
+            )
+        )
+
     def purge_trash_batch(self, session: Session) -> dict[str, Any]:
+        self._sweep_expired_viator_tombstones(session)
+        session.commit()
         where_conditions = self._trash_purge_where()
         candidates = session.scalars(
             select(Booking)
