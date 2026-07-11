@@ -13,8 +13,8 @@ COMPANY_NAME = "BarcelonaTaxi24"
 COMPANY_LINES = [
     "Barcelona International Airport, 08820 El Prat de Llobregat, Barcelona, Spain",
     "0034663619000",
-    "www.taxibarcelona24.com",
-    "info@taxibarcelona24.com",
+    "www.barcelonataxi24.com",
+    "ride@taxibarcelonas.com",
 ]
 TERMS_TEXT = "Payment received via bank transfer"
 # Core PDF fonts (Helvetica) are Latin-1 only; avoid Unicode like € or em dash.
