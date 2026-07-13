@@ -17,6 +17,7 @@ down_revision: Union[str, Sequence[str], None] = "f7a1d4e5b6c7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Literal JSON string (no CAST) — MariaDB rejects CAST(:param AS JSON).
 DEFAULT_TIERS_JSON = (
     '[{"passengers":1,"luggage":1,"price":52},'
     '{"passengers":2,"luggage":2,"price":52},'
@@ -33,18 +34,26 @@ DEFAULT_TIERS_JSON = (
 
 def upgrade() -> None:
     bind = op.get_bind()
-    columns = {col["name"] for col in inspect(bind).get_columns("pricing_settings")}
+    columns = {col["name"]: col for col in inspect(bind).get_columns("pricing_settings")}
+
     if "passenger_luggage_tiers" not in columns:
         op.add_column(
             "pricing_settings",
             sa.Column("passenger_luggage_tiers", sa.JSON(), nullable=True),
         )
-        op.execute(
-            sa.text(
-                "UPDATE pricing_settings "
-                f"SET passenger_luggage_tiers = CAST(:tiers AS JSON)"
-            ).bindparams(tiers=DEFAULT_TIERS_JSON)
+        columns = {col["name"]: col for col in inspect(bind).get_columns("pricing_settings")}
+
+    # Assign JSON as a string literal — works on MySQL and MariaDB.
+    op.execute(
+        sa.text(
+            "UPDATE pricing_settings "
+            f"SET passenger_luggage_tiers = '{DEFAULT_TIERS_JSON}' "
+            "WHERE passenger_luggage_tiers IS NULL"
         )
+    )
+
+    col = columns.get("passenger_luggage_tiers")
+    if col is None or col.get("nullable", True):
         op.alter_column(
             "pricing_settings",
             "passenger_luggage_tiers",
