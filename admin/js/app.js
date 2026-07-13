@@ -13,6 +13,8 @@ import { createBookingsView } from './bookings.js'
 import { createLogsView } from './logs.js'
 import { createReservationView } from './reservation.js'
 import { createInvoiceView } from './invoice.js'
+import { createPricesView } from './prices.js'
+import { createCalculateView } from './calculate.js'
 import { escapeHtml, icon } from './icons.js'
 
 const DOCS_URL = '/internal/api-docs'
@@ -21,6 +23,8 @@ const NAV_ITEMS = [
   { view: 'bookings', label: 'Bookings', icon: 'bookings' },
   { view: 'reservation', label: 'New Reservation', icon: 'reservation' },
   { view: 'invoice', label: 'Generate Invoice', icon: 'invoice' },
+  { view: 'prices', label: 'Prices', icon: 'prices' },
+  { view: 'calculate', label: 'Calculate', icon: 'calculate' },
   { view: 'logs', label: 'Logs', icon: 'logs' },
   { view: 'docs', label: 'API Docs', icon: 'docs', external: DOCS_URL },
 ]
@@ -113,6 +117,10 @@ function mountView(accessToken) {
     activePanel = createReservationView(accessToken, main)
   } else if (activeView === 'invoice') {
     activePanel = createInvoiceView(accessToken, main)
+  } else if (activeView === 'prices') {
+    activePanel = createPricesView(accessToken, main)
+  } else if (activeView === 'calculate') {
+    activePanel = createCalculateView(accessToken, main)
   } else {
     activePanel = createBookingsView(accessToken, main)
   }
@@ -259,9 +267,15 @@ function renderLogin(errorMessage = '') {
   document.getElementById('password-toggle')?.addEventListener('click', () => {
     if (isLoginLocked()) return
     showPassword = !showPassword
-    loginEmailDraft = document.getElementById('admin-email')?.value || loginEmailDraft
-    renderLogin(errorMessage)
-    document.getElementById('admin-email')?.focus()
+    const passwordInput = document.getElementById('admin-password')
+    const toggleBtn = document.getElementById('password-toggle')
+    if (passwordInput) {
+      passwordInput.type = showPassword ? 'text' : 'password'
+    }
+    if (toggleBtn) {
+      toggleBtn.setAttribute('aria-label', showPassword ? 'Hide password' : 'Show password')
+      toggleBtn.innerHTML = showPassword ? icon('eyeOff') : icon('eyeOn')
+    }
   })
 
   document.getElementById('admin-email')?.addEventListener('input', (event) => {

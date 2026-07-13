@@ -46,6 +46,7 @@ class Booking(Base):
     child_seat_count: Mapped[int] = mapped_column("childSeatCount", Integer, default=0)
     booster_count: Mapped[int] = mapped_column("boosterCount", Integer, default=0)
     note: Mapped[str | None] = mapped_column(String(191))
+    driver_list_label: Mapped[str | None] = mapped_column("driver_list_label", String(48))
     created_at: Mapped[datetime] = mapped_column("createdAt", DatetimeMs)
     completed_at: Mapped[datetime | None] = mapped_column("completed_at", DatetimeMs)
     deleted_at: Mapped[datetime | None] = mapped_column("deleted_at", DatetimeMs)

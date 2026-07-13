@@ -80,6 +80,34 @@ export async function authorizedPostJson(path, body, token) {
   return res.json()
 }
 
+export async function authorizedPatchJson(path, body, token) {
+  const res = await fetch(apiUrl(path), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await readApiErrorMessage(res))
+  return res.json()
+}
+
+export async function authorizedPutJson(path, body, token) {
+  const res = await fetch(apiUrl(path), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await readApiErrorMessage(res))
+  return res.json()
+}
+
 export const bookingsApi = {
   list(token, params = {}) {
     const page = params.page ?? 1
@@ -95,6 +123,9 @@ export const bookingsApi = {
   },
   create(token, body) {
     return authorizedPostJson('/bookings', body, token)
+  },
+  update(token, uuid, body) {
+    return authorizedPatchJson(`/bookings/${uuid}`, body, token)
   },
   removeReservation(token, uuid) {
     return authorizedJsonDelete(`/bookings/${uuid}/remove`, token)
@@ -122,6 +153,38 @@ export const adminInvoicesApi = {
     const filename = match?.[1] || 'invoice.pdf'
     const blob = await res.blob()
     return { blob, filename }
+  },
+}
+
+export const adminPricingApi = {
+  get(token) {
+    return authorizedJson('/admin/pricing', token)
+  },
+  update(token, body) {
+    return authorizedPutJson('/admin/pricing', body, token)
+  },
+}
+
+/** Public routing endpoints (same as customer booking quote). */
+export const routingApi = {
+  async places(input) {
+    const res = await fetch(apiUrl('/routing/places'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ input }),
+    })
+    if (!res.ok) throw new Error(await readApiErrorMessage(res))
+    const json = await res.json()
+    return Array.isArray(json) ? json : []
+  },
+  async quote(body) {
+    const res = await fetch(apiUrl('/routing/quote'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(await readApiErrorMessage(res))
+    return res.json()
   },
 }
 

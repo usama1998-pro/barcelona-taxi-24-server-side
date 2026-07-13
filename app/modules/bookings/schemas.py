@@ -34,6 +34,11 @@ class CreateBookingBody(BaseModel):
     flight_number: str | None = Field(default=None, alias="flightNumber")
     return_time: str | None = Field(default=None, alias="returnTime")
     note: str | None = None
+    driver_list_label: str | None = Field(
+        default=None,
+        alias="driverListLabel",
+        max_length=48,
+    )
 
 
 class UpdateBookingBody(BaseModel):
@@ -58,6 +63,11 @@ class UpdateBookingBody(BaseModel):
     flight_number: str | None = Field(default=None, alias="flightNumber")
     return_time: str | None = Field(default=None, alias="returnTime")
     note: str | None = None
+    driver_list_label: str | None = Field(
+        default=None,
+        alias="driverListLabel",
+        max_length=48,
+    )
 
 
 class ListBookingsQuery(BaseModel):

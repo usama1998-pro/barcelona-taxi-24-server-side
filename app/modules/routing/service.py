@@ -117,13 +117,25 @@ class RoutingService:
         )
         return route.distance_meters / 1000
 
-    async def get_quote(self, dto: RouteQuoteBody) -> dict[str, float | int]:
+    async def get_quote(
+        self,
+        dto: RouteQuoteBody,
+        *,
+        session=None,
+    ) -> dict[str, float | int]:
         from app.lib.booking_pricing import (
-            DISTANCE_SHORT_TRIP_MAX_KM,
+            DEFAULT_DISTANCE_INFANT_PRICING,
             BookingPriceInputs,
             calculate_booking_price,
             calculate_distance_surcharge,
             calculate_passenger_luggage_fare,
+            get_pricing_settings,
+        )
+
+        pricing = (
+            get_pricing_settings(session)
+            if session is not None
+            else DEFAULT_DISTANCE_INFANT_PRICING
         )
 
         try:
@@ -146,28 +158,45 @@ class RoutingService:
         passenger_luggage_fare = calculate_passenger_luggage_fare(
             dto.passenger_count,
             dto.luggage_count,
+            pricing.passenger_luggage_tiers,
         )
         distance_surcharge_eur = (
-            calculate_distance_surcharge(distance_km)
-            if distance_km >= DISTANCE_SHORT_TRIP_MAX_KM
+            calculate_distance_surcharge(distance_km, pricing)
+            if distance_km >= pricing.short_trip_max_km
             else 0
         )
-        estimated_price_eur = calculate_booking_price(
+        inputs = BookingPriceInputs(
+            passenger_count=dto.passenger_count,
+            luggage_count=dto.luggage_count,
+            infant_carrier_count=dto.infant_carrier_count,
+            child_seat_count=dto.child_seat_count,
+            booster_count=dto.booster_count,
+            is_return_trip=False,
+            distance_km=distance_km,
+        )
+        one_way_price_eur = calculate_booking_price(inputs, pricing)
+        return_price_eur = calculate_booking_price(
             BookingPriceInputs(
-                passenger_count=dto.passenger_count,
-                luggage_count=dto.luggage_count,
-                infant_carrier_count=dto.infant_carrier_count,
-                child_seat_count=dto.child_seat_count,
-                booster_count=dto.booster_count,
-                is_return_trip=dto.is_return_trip,
+                passenger_count=inputs.passenger_count,
+                luggage_count=inputs.luggage_count,
+                infant_carrier_count=inputs.infant_carrier_count,
+                child_seat_count=inputs.child_seat_count,
+                booster_count=inputs.booster_count,
+                is_return_trip=True,
                 distance_km=distance_km,
-            )
+            ),
+            pricing,
+        )
+        estimated_price_eur = (
+            return_price_eur if dto.is_return_trip else one_way_price_eur
         )
 
         return {
             "distanceKm": round(distance_km * 10) / 10,
             "distanceSurchargeEur": round(distance_surcharge_eur),
             "baseFareEur": passenger_luggage_fare,
+            "oneWayPriceEur": one_way_price_eur,
+            "returnPriceEur": return_price_eur,
             "estimatedPriceEur": estimated_price_eur,
             "durationMinutes": round(route.duration_seconds / 60),
         }

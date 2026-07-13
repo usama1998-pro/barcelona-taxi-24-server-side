@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from app.common.utils.ids import new_id
 from app.db.models.booking import Booking
 from app.db.models.user import User
-from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
+from app.lib.booking_pricing import (
+    BookingPriceInputs,
+    calculate_booking_price,
+    get_pricing_settings,
+)
 from app.lib.booking_reference import (
     booking_reference_trash_like_pattern,
     canonical_booking_reference,
@@ -157,7 +161,8 @@ async def _create_from_viator_impl(
             booster_count=dto.get("boosterCount") or 0,
             is_return_trip=bool(dto.get("returnTime")),
             distance_km=None,
-        )
+        ),
+        get_pricing_settings(session),
     )
 
     booking = Booking(

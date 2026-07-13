@@ -3,6 +3,8 @@ from app.db.models.car import Car
 from app.db.models.driver import Driver
 from app.db.models.driver_invoice import DriverInvoice
 from app.db.models.driver_verification_code import DriverVerificationCode
+from app.db.models.pricing_passcode import PricingPasscode
+from app.db.models.pricing_settings import PricingSettings
 from app.db.models.user import User
 from app.db.models.viator_alert import ViatorAlert
 
@@ -13,5 +15,7 @@ __all__ = [
     "Booking",
     "DriverInvoice",
     "DriverVerificationCode",
+    "PricingSettings",
+    "PricingPasscode",
     "ViatorAlert",
 ]

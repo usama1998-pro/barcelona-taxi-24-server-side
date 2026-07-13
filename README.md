@@ -149,6 +149,7 @@ python -m scripts.promote_super_admin
 python -m scripts.clear_login_lockout
 python -m scripts.set_admin_code
 python -m scripts.set_driver_verification_code
+python -m scripts.set_pricing_passcode
 python -m scripts.seed_test_bookings
 python -m scripts.maybe_migrate_deploy   # only if ALEMBIC_MIGRATE_ON_START=1
 ```

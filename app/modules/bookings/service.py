@@ -20,7 +20,11 @@ from app.db.models.booking import Booking
 from app.db.models.driver import Driver
 from app.db.models.user import User
 from app.db.models.viator_alert import ViatorAlert
-from app.lib.booking_pricing import BookingPriceInputs, calculate_booking_price
+from app.lib.booking_pricing import (
+    BookingPriceInputs,
+    calculate_booking_price,
+    get_pricing_settings,
+)
 from app.lib.booking_reference import (
     booking_reference_search_like_pattern,
     booking_reference_trash_like_pattern,
@@ -448,14 +452,13 @@ class BookingsService:
         infant_carrier_count = dto.infant_carrier_count or 0
         child_seat_count = dto.child_seat_count or 0
         booster_count = dto.booster_count or 0
-        skip_distance_lookup = is_viator_import or self._is_app_guest_booking_email(
-            str(dto.customer_email) if dto.customer_email else None
-        )
+        skip_distance_lookup = is_viator_import
         distance_km = self._resolve_booking_distance_km(
             dto.pickup_location,
             dto.dropoff_location,
             skip=skip_distance_lookup,
         )
+        pricing = get_pricing_settings(session)
         computed_price = calculate_booking_price(
             BookingPriceInputs(
                 passenger_count=dto.passenger_count,
@@ -465,7 +468,8 @@ class BookingsService:
                 booster_count=booster_count,
                 is_return_trip=bool(dto.return_time),
                 distance_km=distance_km,
-            )
+            ),
+            pricing,
         )
 
         user = session.get(User, user_id)
@@ -861,9 +865,7 @@ class BookingsService:
         elif seats_or_trip_counts_changed:
             pickup_location = payload.get("pickup_location", booking.pickup_location)
             dropoff_location = payload.get("dropoff_location", booking.dropoff_location)
-            skip_distance_lookup = is_viator_booking(booking) or self._is_app_guest_booking_email(
-                booking.customer_email or (booking.user.email if booking.user else None)
-            )
+            skip_distance_lookup = is_viator_booking(booking)
             distance_km = self._resolve_booking_distance_km(
                 pickup_location,
                 dropoff_location,
@@ -878,7 +880,8 @@ class BookingsService:
                     booster_count=next_booster_count,
                     is_return_trip=bool(next_return_time),
                     distance_km=distance_km,
-                )
+                ),
+                get_pricing_settings(session),
             )
 
         became_completed = False
@@ -928,9 +931,15 @@ class BookingsService:
             ("customer_email", "customer_email"),
             ("customer_phone", "customer_phone"),
             ("flight_number", "flight_number"),
+            ("driver_list_label", "driver_list_label"),
         ):
             if key in payload:
-                updates[field] = payload[key]
+                value = payload[key]
+                if key == "driver_list_label" and isinstance(value, str):
+                    trimmed = value.strip()
+                    updates[field] = trimmed or None
+                else:
+                    updates[field] = value
 
         if "return_time" in payload:
             updates["return_time"] = next_return_time

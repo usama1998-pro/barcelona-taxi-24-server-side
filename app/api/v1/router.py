@@ -12,6 +12,8 @@ from app.api.v1.invoices.router import router as invoices_router
 from app.api.v1.logs.router import router as logs_router
 from app.api.v1.mail.router import router as mail_router
 from app.api.v1.payments.router import router as payments_router
+from app.api.v1.pricing.admin_router import router as admin_pricing_router
+from app.api.v1.pricing.driver_router import router as driver_pricing_router
 from app.api.v1.routing.router import router as routing_router
 from app.api.v1.users.router import router as users_router
 from app.api.v1.viator.router import router as viator_router
@@ -26,6 +28,8 @@ def build_v1_router() -> APIRouter:
     router.include_router(admin_verification_router)
     router.include_router(admin_driver_link_router)
     router.include_router(admin_invoices_router)
+    router.include_router(admin_pricing_router)
+    router.include_router(driver_pricing_router)
     router.include_router(bookings_router)
     router.include_router(drivers_router)
     router.include_router(invoices_router)

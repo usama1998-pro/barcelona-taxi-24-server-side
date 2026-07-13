@@ -91,6 +91,7 @@ def to_public_booking(booking: Booking) -> dict[str, Any]:
         "childSeatCount": booking.child_seat_count if show_web_passenger_details else 0,
         "boosterCount": booking.booster_count if show_web_passenger_details else 0,
         "note": booking.note,
+        "driverListLabel": booking.driver_list_label,
         "createdAt": _iso_datetime(booking.created_at),
         "completedAt": _iso_datetime(booking.completed_at),
         "user": _serialize_user(booking.user),

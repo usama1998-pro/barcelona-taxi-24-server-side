@@ -25,6 +25,8 @@ const TABS = [
   { key: 'past', label: 'Past' },
 ]
 
+const DEFAULT_DRIVER_LIST_LABEL = 'D.Name'
+
 function emptySection() {
   return {
     items: [],
@@ -47,6 +49,9 @@ export function createBookingsView(accessToken, container) {
   let dateDraft = ''
   let appliedScheduledOn = null
   let notesBooking = null
+  let driverLabelBooking = null
+  let driverLabelDraft = ''
+  let savingDriverLabel = false
   let detailUuid = null
   let detailBooking = null
   let detailLoading = false
@@ -226,9 +231,31 @@ export function createBookingsView(accessToken, container) {
     }
   }
 
+  function applyBookingUpdate(updated) {
+    if (!updated?.uuid) return
+    let changed = false
+    const next = { ...byScope }
+    for (const scope of Object.keys(next)) {
+      const st = next[scope]
+      const idx = st.items.findIndex((b) => b.uuid === updated.uuid)
+      if (idx < 0) continue
+      const items = st.items.slice()
+      items[idx] = { ...items[idx], ...updated }
+      next[scope] = { ...st, items }
+      changed = true
+    }
+    if (changed) byScope = next
+  }
+
+  function driverListLabelFor(b) {
+    const custom = typeof b.driverListLabel === 'string' ? b.driverListLabel.trim() : ''
+    return custom || DEFAULT_DRIVER_LIST_LABEL
+  }
+
   function renderBookingCard(b) {
     const passenger = escapeHtml(bookingPassengerLabel(b))
     const dateKey = bookingDayKeyFromIso(b.scheduledTime)
+    const driverLabel = escapeHtml(driverListLabelFor(b))
     return `
       <article class="admin-booking-card" data-uuid="${escapeHtml(b.uuid)}">
         <div class="admin-booking-card__date-strip">${escapeHtml(dateKey)}</div>
@@ -249,6 +276,7 @@ export function createBookingsView(accessToken, container) {
                   <span class="admin-booking-card__pax-icon">${icon('users')}</span>
                   <span class="admin-booking-card__pax-num">${b.passengerCount}</span>
                 </span>
+                <button type="button" class="admin-booking-card__btn-driver" data-action="edit-driver" data-uuid="${escapeHtml(b.uuid)}" aria-label="Set driver name on list">${driverLabel}</button>
                 <button type="button" class="admin-booking-card__btn-notes" data-action="notes" data-uuid="${escapeHtml(b.uuid)}">Notes</button>
                 <button type="button" class="admin-booking-card__btn-view" data-action="view" data-uuid="${escapeHtml(b.uuid)}" aria-label="View booking">${icon('eye')}</button>
                 <button type="button" class="admin-booking-card__btn-delete" data-action="delete" data-uuid="${escapeHtml(b.uuid)}" aria-label="Delete booking">${icon('trash')}</button>
@@ -403,6 +431,30 @@ export function createBookingsView(accessToken, container) {
       </div>`
       : ''
 
+    const driverLabelModal = driverLabelBooking
+      ? `
+      <div class="admin-bookings-modal-overlay" data-action="close-driver-label" role="presentation">
+        <div class="admin-bookings-modal-sheet" role="dialog" aria-labelledby="admin-driver-label-title">
+          <h2 id="admin-driver-label-title" class="admin-bookings-modal-title">Enter driver name</h2>
+          <p class="admin-bookings-modal-hint">Only this booking. Leave empty or save ${escapeHtml(DEFAULT_DRIVER_LIST_LABEL)} to reset.</p>
+          <input
+            id="admin-driver-label-input"
+            class="admin-bookings-modal-input"
+            type="text"
+            maxlength="48"
+            autocomplete="off"
+            placeholder="${escapeAttr(DEFAULT_DRIVER_LIST_LABEL)}"
+            value="${escapeAttr(driverLabelDraft)}"
+            ${savingDriverLabel ? 'disabled' : ''}
+          />
+          <div class="admin-bookings-modal-actions">
+            <button type="button" class="admin-bookings-modal-btn-secondary" data-action="close-driver-label"${savingDriverLabel ? ' disabled' : ''}>Cancel</button>
+            <button type="button" class="admin-bookings-modal-btn-primary" data-action="save-driver-label"${savingDriverLabel ? ' disabled' : ''}>${savingDriverLabel ? 'Saving…' : 'Save'}</button>
+          </div>
+        </div>
+      </div>`
+      : ''
+
     container.innerHTML = `
       <div class="admin-bookings-shell">
         <header class="admin-bookings-shell__navbar">
@@ -429,6 +481,7 @@ export function createBookingsView(accessToken, container) {
         </div>
         <div class="admin-bookings-shell__scroll">${listHtml}${footer}</div>
         ${notesModal}
+        ${driverLabelModal}
         ${renderDetailModal()}
       </div>`
 
@@ -436,6 +489,12 @@ export function createBookingsView(accessToken, container) {
     if (refEl) refEl.addEventListener('input', (e) => { refInput = e.target.value })
     const dateEl = container.querySelector('[data-input="date"]')
     if (dateEl) dateEl.addEventListener('input', (e) => { dateDraft = e.target.value })
+    const driverLabelInput = container.querySelector('#admin-driver-label-input')
+    if (driverLabelInput) {
+      driverLabelInput.addEventListener('input', (e) => { driverLabelDraft = e.target.value })
+      driverLabelInput.focus()
+      driverLabelInput.select()
+    }
   }
 
   function bindEvents() {
@@ -507,6 +566,48 @@ export function createBookingsView(accessToken, container) {
         }
         return
       }
+      if (action === 'edit-driver' && uuid) {
+        const b = section().items.find((item) => item.uuid === uuid)
+        if (!b) return
+        driverLabelBooking = b
+        const custom = typeof b.driverListLabel === 'string' ? b.driverListLabel.trim() : ''
+        driverLabelDraft = custom || DEFAULT_DRIVER_LIST_LABEL
+        savingDriverLabel = false
+        render()
+        return
+      }
+      if (action === 'close-driver-label') {
+        if (savingDriverLabel) return
+        driverLabelBooking = null
+        driverLabelDraft = ''
+        render()
+        return
+      }
+      if (action === 'save-driver-label') {
+        if (!driverLabelBooking || savingDriverLabel) return
+        const uuidToSave = driverLabelBooking.uuid
+        const trimmed = driverLabelDraft.trim()
+        const nextLabel =
+          trimmed.length === 0 || trimmed === DEFAULT_DRIVER_LIST_LABEL ? null : trimmed
+        savingDriverLabel = true
+        render()
+        void (async () => {
+          try {
+            const updated = await bookingsApi.update(accessToken, uuidToSave, {
+              driverListLabel: nextLabel,
+            })
+            applyBookingUpdate(updated)
+            driverLabelBooking = null
+            driverLabelDraft = ''
+          } catch (e) {
+            window.alert(e instanceof Error ? e.message : 'Could not save driver name.')
+          } finally {
+            savingDriverLabel = false
+            render()
+          }
+        })()
+        return
+      }
       if (action === 'view' && uuid) {
         void openDetail(uuid)
         return
@@ -535,7 +636,14 @@ export function createBookingsView(accessToken, container) {
 
     container.addEventListener('click', (event) => {
       if (event.target.classList.contains('admin-bookings-modal-overlay')) {
-        notesBooking = null
+        const closeAction = event.target.dataset.action
+        if (closeAction === 'close-driver-label') {
+          if (savingDriverLabel) return
+          driverLabelBooking = null
+          driverLabelDraft = ''
+        } else {
+          notesBooking = null
+        }
         render()
       }
       if (event.target.classList.contains('admin-res-detail-overlay')) {
