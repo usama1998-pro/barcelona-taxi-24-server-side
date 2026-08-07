@@ -1,4 +1,4 @@
-"""Set the passcode that unlocks Prices in the driver app.
+"""Set the passcode that unlocks Prices and Calculate in the driver app.
 
 Run from server-side (venv active):
 
@@ -56,7 +56,7 @@ def main() -> int:
                 )
                 conn.commit()
                 print(f"Pricing passcode set: {code}")
-                print("Drivers must enter this code to open Prices in the app.")
+                print("Drivers must enter this code to open Prices and Calculate in the app.")
     except Exception as error:
         print(error)
         return 1

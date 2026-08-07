@@ -12,7 +12,7 @@ PRICING_PASSCODE_ROW_ID = "default"
 
 
 class PricingPasscode(Base):
-    """Single-row passcode that gates the driver-app Prices screen / API."""
+    """Single-row passcode that gates the driver-app Prices and Calculate screens / API."""
 
     __tablename__ = "pricing_passcode"
 

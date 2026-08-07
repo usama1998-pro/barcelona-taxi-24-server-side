@@ -8,6 +8,7 @@ from app.db.session import get_session
 from app.lib.mail_config import get_booking_notify_email, get_smtp_config, get_smtp_port_warning, is_smtp_configured
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.mail.schemas import (
+    ContactInquiryBody,
     ResendBookingEmailsBody,
     SendBookingEmailBody,
     SendTestEmailBody,
@@ -15,6 +16,19 @@ from app.modules.mail.schemas import (
 from app.modules.mail.service import find_one_public_by_uuid, mail_service
 
 router = APIRouter(prefix="/mail", tags=["mail"])
+
+
+@router.post("/inquiry")
+async def contact_inquiry(body: ContactInquiryBody) -> dict:
+    """Public website contact form — emails BOOKING_NOTIFY_EMAIL / SMTP inbox."""
+    await mail_service.send_contact_inquiry(
+        name=body.name,
+        message=body.message,
+        email=str(body.email) if body.email else None,
+        phone=body.phone,
+        booking_reference=body.booking_reference,
+    )
+    return {"success": True, "message": "Your message was sent."}
 
 
 @router.post("/booking/confirm")

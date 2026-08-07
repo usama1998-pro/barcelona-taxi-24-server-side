@@ -394,6 +394,95 @@ class MailService:
             )
         return {"sentTo": sent_to}
 
+    async def send_contact_inquiry(
+        self,
+        *,
+        name: str,
+        message: str,
+        email: str | None = None,
+        phone: str | None = None,
+        booking_reference: str | None = None,
+    ) -> bool:
+        notify_to = get_booking_notify_email()
+        if not notify_to:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Inquiry email is not configured. Set BOOKING_NOTIFY_EMAIL or SMTP_USER.",
+            )
+
+        smtp = get_smtp_config()
+        if not smtp:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS.",
+            )
+
+        safe_name = _escape_html(name.strip())
+        safe_message = _escape_html(message.strip()).replace("\n", "<br/>")
+        safe_email = _normalize_email(email)
+        safe_phone = (phone or "").strip()
+        safe_ref = (booking_reference or "").strip()
+
+        rows: list[str] = [f"<tr><td><strong>Name</strong></td><td>{safe_name}</td></tr>"]
+        if safe_email:
+            rows.append(
+                f"<tr><td><strong>Email</strong></td><td>{_escape_html(safe_email)}</td></tr>"
+            )
+        if safe_phone:
+            rows.append(
+                f"<tr><td><strong>Phone / WhatsApp</strong></td>"
+                f"<td>{_escape_html(safe_phone)}</td></tr>"
+            )
+        if safe_ref:
+            rows.append(
+                f"<tr><td><strong>Booking reference</strong></td>"
+                f"<td>{_escape_html(safe_ref)}</td></tr>"
+            )
+
+        subject = (
+            f"Website inquiry — {safe_ref}"
+            if safe_ref
+            else f"Website inquiry from {name.strip()}"
+        )
+
+        html = f"""
+          <h1>New website inquiry</h1>
+          <p>Someone submitted the contact form on the website.</p>
+          <table cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+            {''.join(rows)}
+          </table>
+          <h2>Message</h2>
+          <p>{safe_message}</p>
+        """
+
+        logger.info(
+            "Sending contact inquiry: to=%s from_name=%s reply_to=%s %s",
+            notify_to,
+            name.strip(),
+            safe_email or "none",
+            self._smtp_log_context(),
+        )
+        try:
+            await self._send_async(
+                smtp,
+                notify_to,
+                subject,
+                html,
+                reply_to=safe_email,
+            )
+            logger.info("Contact inquiry sent: to=%s", notify_to)
+            return True
+        except Exception:
+            logger.exception(
+                "Failed to send contact inquiry: to=%s (%s)",
+                notify_to,
+                self._smtp_log_context(),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Could not send your message. Please try again shortly.",
+            ) from None
+
     async def _send_async(
         self,
         smtp: SmtpConfig,
