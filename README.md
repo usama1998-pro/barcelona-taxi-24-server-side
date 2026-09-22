@@ -161,7 +161,9 @@ python -m scripts.maybe_migrate_deploy   # only if ALEMBIC_MIGRATE_ON_START=1
 - Shared hosting (Passenger): entrypoint is `passenger_wsgi.py`.
 - Set `APP_ENV=production` and a strong `JWT_SECRET`.
 - Point `APP_URL` at your public API URL.
-- Admin UI is served at `{APP_URL}/my-portal`.
+- Admin UI is served at `{APP_URL}/my-portal` (same origin — CORS not required for admin itself).
+- Browser CORS allows [https://barcelonataxi24.com](https://barcelonataxi24.com) and `https://www.barcelonataxi24.com` by default. Override with `CORS_ORIGINS` (comma-separated). Non-production also allows localhost.
+- Booking check/list reads (`GET /api/v1/bookings`, `GET /api/v1/bookings/{uuid}`, …) intentionally send **no** CORS headers (admin same-origin + mobile apps only). Public `POST /api/v1/bookings` still uses CORS.
 - For Hostinger-style MySQL limits, see commented `DATABASE_*` options in `.env.example`.
 
 ## Troubleshooting

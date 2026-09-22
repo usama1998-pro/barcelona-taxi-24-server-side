@@ -31,6 +31,40 @@ def _parse_max_files(value: str | None) -> int:
     return 5
 
 
+# Public website that calls this API from the browser.
+_DEFAULT_PUBLIC_CORS_ORIGINS = (
+    "https://barcelonataxi24.com",
+    "https://www.barcelonataxi24.com",
+)
+
+# Local frontend + admin UI during development.
+_DEFAULT_DEV_CORS_ORIGINS = (
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8000",
+)
+
+
+def _parse_cors_origins(value: str | None, *, app_env: str, port: int) -> tuple[str, ...]:
+    """Comma-separated CORS_ORIGINS, or defaults for public site (+ localhost in non-production)."""
+    raw = (value or "").strip()
+    if raw:
+        origins = tuple(origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip())
+        if origins:
+            return origins
+
+    origins = list(_DEFAULT_PUBLIC_CORS_ORIGINS)
+    if app_env != "production":
+        origins.extend(_DEFAULT_DEV_CORS_ORIGINS)
+        origins.append(f"http://localhost:{port}")
+        origins.append(f"http://127.0.0.1:{port}")
+    # Preserve order, drop duplicates.
+    return tuple(dict.fromkeys(origins))
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -67,22 +101,24 @@ class Settings:
     log_file_max_files: int
     log_file_max_size: str | None
     log_level: str
+    cors_origins: tuple[str, ...]
 
     @classmethod
     def from_env(cls) -> "Settings":
         port = int(os.getenv("PORT", "8000"))
         pool_limit = os.getenv("DATABASE_POOL_CONNECTION_LIMIT", "5")
         connect_timeout = os.getenv("DATABASE_CONNECT_TIMEOUT_MS", "").strip()
+        app_env = os.getenv("APP_ENV", "development")
 
         jwt_secret = (os.getenv("JWT_SECRET") or "").strip()
         if not jwt_secret:
-            if os.getenv("APP_ENV", "development") == "production":
+            if app_env == "production":
                 raise RuntimeError("JWT_SECRET must be set in production")
             jwt_secret = "dev-only-change-in-production"
 
         return cls(
             app_name=os.getenv("APP_NAME", "Taxi Booking API"),
-            app_env=os.getenv("APP_ENV", "development"),
+            app_env=app_env,
             app_url=os.getenv("APP_URL", f"http://localhost:{port}"),
             host=os.getenv("HOST", "0.0.0.0"),
             port=port,
@@ -120,6 +156,7 @@ class Settings:
             log_file_max_files=_parse_max_files(os.getenv("LOG_FILE_MAX_FILES")),
             log_file_max_size=(os.getenv("LOG_FILE_MAX_SIZE") or "").strip() or None,
             log_level=(os.getenv("LOG_LEVEL") or "info").strip().lower() or "info",
+            cors_origins=_parse_cors_origins(os.getenv("CORS_ORIGINS"), app_env=app_env, port=port),
         )
 
     def database_url(self) -> str:
