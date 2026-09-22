@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_jwt
 from app.api.v1.bookings.error_handling import handle_booking_errors
+from app.core.rate_limit import BOOKING_CREATE_RATE_LIMIT, check_rate_limit, client_ip
 from app.db.session import get_session
 from app.modules.auth.types import AuthenticatedUser
 from app.modules.bookings.schemas import (
@@ -37,9 +38,14 @@ def _list_query(
 @router.post("")
 @handle_booking_errors("create")
 async def create(
+    request: Request,
     body: CreateBookingBody,
     session: Annotated[Session, Depends(get_session)],
 ):
+    check_rate_limit(
+        f"booking_create:{client_ip(request)}",
+        limit=BOOKING_CREATE_RATE_LIMIT,
+    )
     return bookings_service.create(session, body)
 
 

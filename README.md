@@ -127,6 +127,8 @@ uvicorn app.main:app --reload --host %HOST% --port %PORT%
 
 Admin UI and admin APIs (`/my-portal`, `/api/v1/admin/*`, and staff-admin routes such as `/api/v1/logs`) are rate-limited to **300 requests per minute** per client IP.
 
+Public booking create (`POST /api/v1/bookings`) is limited to **5 requests per minute** per client IP. Mail send endpoints (`POST /api/v1/mail/inquiry`, `/booking/confirm`, `/test`, `/booking/resend`) share a separate **5 requests per minute** per client IP bucket. Over limit returns **429** with `Retry-After: 60`.
+
 Password sign-in (`POST /api/v1/auth/signin`) allows **5 failed attempts** per email. After that the account is locked for **15 minutes**; each later lockout adds another **15 minutes** (30, 45, …). A successful sign-in clears the counter.
 
 To unlock without waiting (works while the API is running):

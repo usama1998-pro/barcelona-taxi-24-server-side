@@ -12,6 +12,11 @@ from fastapi import HTTPException, Request, status
 ADMIN_RATE_LIMIT = 300
 ADMIN_RATE_WINDOW_SECONDS = 60.0
 
+# Public booking create triggers confirmation emails — keep this low.
+BOOKING_CREATE_RATE_LIMIT = 5
+# Public/staff mail send endpoints share one bucket per IP.
+MAIL_RATE_LIMIT = 5
+
 _lock = threading.Lock()
 _hits: dict[str, deque[float]] = defaultdict(deque)
 
