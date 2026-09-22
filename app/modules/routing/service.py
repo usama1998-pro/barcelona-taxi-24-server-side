@@ -17,7 +17,22 @@ class DirectionsResult:
     duration_seconds: int
 
 
+def _parse_duration_seconds(raw: str | None) -> int:
+    """Parse Routes API duration strings like ``123s`` into seconds."""
+    if not raw:
+        return 0
+    text = raw.strip()
+    if text.endswith("s"):
+        text = text[:-1]
+    try:
+        return int(float(text))
+    except ValueError:
+        return 0
+
+
 class GoogleDirectionsClient:
+    """Driving distance/duration via Routes API (New)."""
+
     async def get_driving_route_between_addresses(
         self,
         from_address: str,
@@ -29,34 +44,45 @@ class GoogleDirectionsClient:
             raise ValueError("Origin and destination addresses are required")
 
         config = get_routing_config()
-        params = {
-            "origin": origin,
-            "destination": destination,
-            "mode": "driving",
-            "units": "metric",
-            "key": config.google_maps_api_key,
-            "region": config.region,
-        }
         timeout = config.request_timeout_ms / 1000
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": config.google_maps_api_key,
+            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+        }
+        body = {
+            "origin": {"address": origin},
+            "destination": {"address": destination},
+            "travelMode": "DRIVE",
+            "routingPreference": "TRAFFIC_UNAWARE",
+            "regionCode": config.region.lower(),
+            "units": "METRIC",
+        }
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                "https://maps.googleapis.com/maps/api/directions/json",
-                params=params,
+            response = await client.post(
+                "https://routes.googleapis.com/directions/v2:computeRoutes",
+                headers=headers,
+                json=body,
             )
             data = response.json()
 
-        if data.get("status") != "OK":
-            raise RuntimeError(
-                data.get("error_message")
-                or f'Google Directions failed with status "{data.get("status")}"'
+        if response.status_code >= 400:
+            message = (
+                (data.get("error") or {}).get("message")
+                or data.get("message")
+                or f"Google Routes failed with HTTP {response.status_code}"
             )
+            raise RuntimeError(message)
 
-        legs = (data.get("routes") or [{}])[0].get("legs") or []
-        if not legs:
-            raise RuntimeError("Google Directions returned no route")
+        routes = data.get("routes") or []
+        if not routes:
+            raise RuntimeError("Google Routes returned no route")
 
-        distance_meters = sum(leg.get("distance", {}).get("value", 0) for leg in legs)
-        duration_seconds = sum(leg.get("duration", {}).get("value", 0) for leg in legs)
+        route = routes[0]
+        distance_meters = int(route.get("distanceMeters") or 0)
+        duration_seconds = _parse_duration_seconds(route.get("duration"))
+        if distance_meters <= 0:
+            raise RuntimeError("Google Routes returned no distance")
         return DirectionsResult(
             distance_meters=distance_meters,
             duration_seconds=duration_seconds,
@@ -64,42 +90,55 @@ class GoogleDirectionsClient:
 
 
 class GooglePlacesClient:
+    """Address autocomplete via Places API (New)."""
+
     async def search_places(self, input_text: str) -> list[dict[str, str]]:
         query = input_text.strip()
         if not query:
             return []
 
         config = get_routing_config()
-        components = "|".join(f"country:{code}" for code in config.country_codes)
-        params = {
-            "input": query,
-            "key": config.google_maps_api_key,
-            "components": components,
-            "region": config.region,
-        }
         timeout = config.request_timeout_ms / 1000
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": config.google_maps_api_key,
+            # Field mask keeps the autocomplete payload small.
+            "X-Goog-FieldMask": (
+                "suggestions.placePrediction.placeId,"
+                "suggestions.placePrediction.text"
+            ),
+        }
+        body: dict = {
+            "input": query,
+            "includedRegionCodes": [code.lower() for code in config.country_codes],
+            "regionCode": config.region.lower(),
+        }
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                "https://maps.googleapis.com/maps/api/place/autocomplete/json",
-                params=params,
+            response = await client.post(
+                "https://places.googleapis.com/v1/places:autocomplete",
+                headers=headers,
+                json=body,
             )
             data = response.json()
 
-        if data.get("status") == "ZERO_RESULTS":
-            return []
-        if data.get("status") != "OK":
-            raise RuntimeError(
-                data.get("error_message")
-                or f'Google Places autocomplete failed with status "{data.get("status")}"'
+        if response.status_code >= 400:
+            message = (
+                (data.get("error") or {}).get("message")
+                or data.get("message")
+                or f"Google Places autocomplete failed with HTTP {response.status_code}"
             )
+            raise RuntimeError(message)
 
-        return [
-            {
-                "description": prediction.get("description", ""),
-                "placeId": prediction.get("place_id", ""),
-            }
-            for prediction in data.get("predictions") or []
-        ]
+        results: list[dict[str, str]] = []
+        for suggestion in data.get("suggestions") or []:
+            prediction = suggestion.get("placePrediction") or {}
+            place_id = (prediction.get("placeId") or "").strip()
+            text_obj = prediction.get("text") or {}
+            description = (text_obj.get("text") or "").strip()
+            if not description:
+                continue
+            results.append({"description": description, "placeId": place_id})
+        return results
 
 
 class RoutingService:
