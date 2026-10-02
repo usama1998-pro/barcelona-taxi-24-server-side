@@ -197,10 +197,11 @@ class PaymentsService:
             )
 
         stripe.api_key = self._stripe_secret_key()
+        # Card only — do not enable automatic wallets (PayPal/Link/etc. in Payment Element).
         intent = stripe.PaymentIntent.create(
             amount=amount_cents,
             currency="eur",
-            automatic_payment_methods={"enabled": True},
+            payment_method_types=["card"],
         )
         client_secret = intent.client_secret
         if not client_secret:
