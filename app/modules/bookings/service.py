@@ -4,7 +4,6 @@ import logging
 import os
 import secrets
 import threading
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -14,7 +13,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.common.utils.ids import new_id
-from app.common.utils.password import hash_password
 from app.lib.async_bridge import run_coroutine_sync
 from app.db.models.booking import Booking
 from app.db.models.driver import Driver
@@ -200,91 +198,14 @@ class BookingsService:
             detail=message,
         )
 
-    def _resolve_or_create_public_booking_user_id(
-        self,
-        session: Session,
-        dto: CreateBookingBody,
-    ) -> str:
-        name = (dto.customer_name or "").strip()
-        email = (str(dto.customer_email) if dto.customer_email else "").strip().lower()
-        phone = (dto.customer_phone or "").strip()
-        if not name or not email or not phone:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "customerName, customerEmail, and customerPhone are required "
-                    "for public booking creation"
-                ),
-            )
+    def _resolve_booking_owner_user_id(self, session: Session) -> str:
+        """Website + Viator bookings attach to SUPER_ADMIN_EMAIL only (no User create)."""
+        from app.modules.viator.bookings_port import resolve_viator_booking_user_id
 
-        by_email = session.scalar(select(User).where(User.email == email))
-        if by_email:
-            is_viator_guest = email.startswith("viator.") and email.endswith(
-                "@taxibarcelona24.guest"
-            )
-            if is_viator_guest and name != by_email.full_name:
-                by_email.full_name = name
-                by_email.phone = phone
-                session.flush()
-            return by_email.id
-
-        by_phone = session.scalar(select(User).where(User.phone == phone))
-        if by_phone:
-            if self._is_app_guest_booking_email(by_phone.email) and email != by_phone.email:
-                by_phone.email = email
-                by_phone.full_name = name
-                session.flush()
-            return by_phone.id
-
-        created = User(
-            id=new_id(),
-            full_name=name,
-            email=email,
-            phone=phone,
-            password=hash_password(str(uuid.uuid4())),
-            is_admin=False,
-            is_super_admin=False,
-            token_version=0,
-            created_at=datetime.now(timezone.utc),
-        )
-        session.add(created)
-        session.flush()
-        return created.id
+        return resolve_viator_booking_user_id(session)
 
     def _resolve_viator_booking_user_id(self, session: Session) -> str:
-        configured_email = (os.getenv("SUPER_ADMIN_EMAIL") or "").strip().lower()
-        if configured_email:
-            configured_staff = session.scalar(
-                select(User).where(User.email == configured_email)
-            )
-            if configured_staff and configured_staff.is_admin:
-                return configured_staff.id
-            logger.warning(
-                "SUPER_ADMIN_EMAIL is set but not a staff user in DB: %s",
-                configured_email,
-            )
-
-        any_staff = session.scalar(
-            select(User)
-            .where(User.is_admin.is_(True))
-            .order_by(User.created_at.asc())
-            .limit(1)
-        )
-        if any_staff:
-            logger.warning(
-                "Viator import fallback: using staff user %s as booking owner",
-                any_staff.email,
-            )
-            return any_staff.id
-
-        message = (
-            "Cannot save Viator booking: no staff user found to attach booking owner."
-        )
-        logger.error(message)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=message,
-        )
+        return self._resolve_booking_owner_user_id(session)
 
     @staticmethod
     def _assert_can_view_booking(
@@ -444,10 +365,23 @@ class BookingsService:
         is_viator_import = self._is_viator_email_import(dto)
         if dto.user_id:
             user_id = dto.user_id
-        elif is_viator_import:
-            user_id = self._resolve_viator_booking_user_id(session)
         else:
-            user_id = self._resolve_or_create_public_booking_user_id(session, dto)
+            # Website + Viator: attach to SUPER_ADMIN_EMAIL only — never create Users.
+            if not is_viator_import:
+                name = (dto.customer_name or "").strip()
+                email = (
+                    str(dto.customer_email).strip().lower() if dto.customer_email else ""
+                )
+                phone = (dto.customer_phone or "").strip()
+                if not name or not email or not phone:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "customerName, customerEmail, and customerPhone are required "
+                            "for public booking creation"
+                        ),
+                    )
+            user_id = self._resolve_booking_owner_user_id(session)
 
         infant_carrier_count = dto.infant_carrier_count or 0
         child_seat_count = dto.child_seat_count or 0

@@ -93,36 +93,48 @@ def find_by_booking_reference(session: Session, booking_reference: str) -> Booki
     )
 
 
+def resolve_viator_booking_user_id(session: Session) -> str:
+    """Booking owner is always SUPER_ADMIN_EMAIL. Never create a User row here."""
+    configured_email = (os.getenv("SUPER_ADMIN_EMAIL") or "").strip().lower()
+    if not configured_email:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Cannot save booking: SUPER_ADMIN_EMAIL must be set "
+                "as the booking owner."
+            ),
+        )
+
+    user = session.scalar(select(User).where(User.email == configured_email))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                f"Cannot save booking: SUPER_ADMIN_EMAIL={configured_email} "
+                "has no User row. Create that staff account first "
+                "(python -m scripts.ensure_super_admin_from_env)."
+            ),
+        )
+
+    changed = False
+    if not user.is_admin:
+        user.is_admin = True
+        changed = True
+    if not user.is_super_admin:
+        user.is_super_admin = True
+        changed = True
+    if changed:
+        session.flush()
+        logger.info(
+            "Promoted %s to staff/super admin for booking owner",
+            configured_email,
+        )
+    return user.id
+
+
 def _resolve_viator_booking_user_id(session: Session) -> str:
-    configured_staff_email = (os.getenv("SUPER_ADMIN_EMAIL") or "").strip().lower()
-    if configured_staff_email:
-        configured_staff = session.execute(
-            select(User.id, User.is_admin).where(User.email == configured_staff_email)
-        ).first()
-        if configured_staff and configured_staff[1]:
-            return configured_staff[0]
-        logger.warning(
-            "SUPER_ADMIN_EMAIL is set but not a staff user in DB: %s",
-            configured_staff_email,
-        )
+    return resolve_viator_booking_user_id(session)
 
-    any_staff = session.execute(
-        select(User.id, User.email)
-        .where(User.is_admin.is_(True))
-        .order_by(User.created_at.asc())
-        .limit(1)
-    ).first()
-    if any_staff:
-        logger.warning(
-            "Viator import fallback: using staff user %s as booking owner",
-            any_staff[1],
-        )
-        return any_staff[0]
-
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Cannot save Viator booking: no staff user found to attach booking owner.",
-    )
 
 
 async def create_from_viator(
