@@ -16,9 +16,13 @@ _BOOKINGS_PREFIX = f"{API_V1_PREFIX}/bookings"
 
 
 def is_booking_check_path(path: str, method: str) -> bool:
-    """True for JWT booking list/detail reads — no CORS headers."""
+    """True for JWT booking list/detail reads — no CORS headers.
+
+    OPTIONS must NOT be skipped: browsers preflight POST /bookings (create)
+    with OPTIONS, and that request still needs Access-Control-* headers.
+    """
     method_u = method.upper()
-    if method_u not in {"GET", "HEAD", "OPTIONS"}:
+    if method_u not in {"GET", "HEAD"}:
         return False
     return path == _BOOKINGS_PREFIX or path.startswith(f"{_BOOKINGS_PREFIX}/")
 
