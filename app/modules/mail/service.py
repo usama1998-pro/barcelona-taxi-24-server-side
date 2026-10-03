@@ -1,35 +1,32 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import smtplib
-from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr, make_msgid
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models.booking import Booking
-from app.lib.booking_source import is_website_booking_public
-from app.modules.bookings.serializers import to_public_booking
 from app.lib.mail_config import (
     SmtpConfig,
     get_booking_notify_email,
     get_smtp_config,
     is_smtp_configured,
 )
+from app.modules.bookings.serializers import to_public_booking
+from app.modules.mail.templates import (
+    booking_customer_email,
+    render_client_booking_confirmation_html,
+    render_owner_new_booking_html,
+)
 
 logger = logging.getLogger(__name__)
-
-
-def _booking_time_zone() -> str:
-    return (os.getenv("TZ") or "Europe/Madrid").strip() or "Europe/Madrid"
 
 
 def _serialize_public_booking(booking: Booking) -> dict[str, Any]:
@@ -64,110 +61,11 @@ def _escape_html(value: str) -> str:
     )
 
 
-def _location_label(location: dict[str, Any] | None) -> str:
-    if not location:
-        return "—"
-    label = location.get("label")
-    if isinstance(label, str) and label.strip():
-        return label.strip()
-    address = location.get("address")
-    if isinstance(address, str) and address.strip():
-        return address.strip()
-    return "—"
-
-
-def _format_scheduled_time(iso: str | datetime) -> str:
-    date = iso if isinstance(iso, datetime) else datetime.fromisoformat(iso.replace("Z", "+00:00"))
-    tz = ZoneInfo(_booking_time_zone())
-    return date.astimezone(tz).strftime("%d %b %Y, %H:%M")
-
-
-def _format_fare_eur(price: float) -> str:
-    return f"€{price:,.2f}"
-
-
-def _format_child_seats_summary(booking: dict[str, Any]) -> str | None:
-    parts: list[str] = []
-    if booking.get("infantCarrierCount", 0) > 0:
-        count = booking["infantCarrierCount"]
-        parts.append(f"{count} infant carrier{'s' if count != 1 else ''}")
-    if booking.get("childSeatCount", 0) > 0:
-        count = booking["childSeatCount"]
-        parts.append(f"{count} child seat{'s' if count != 1 else ''}")
-    if booking.get("boosterCount", 0) > 0:
-        count = booking["boosterCount"]
-        parts.append(f"{count} booster{'s' if count != 1 else ''}")
-    return ", ".join(parts) if parts else None
-
-
 def _normalize_email(value: str | None) -> str | None:
     normalized = (value or "").strip().lower()
     if not normalized or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
         return None
     return normalized
-
-
-def _booking_customer_email(
-    booking: dict[str, Any],
-    *,
-    override: str | None = None,
-) -> str | None:
-    for candidate in (
-        override,
-        booking.get("customerEmail"),
-        ((booking.get("user") or {}).get("email") if isinstance(booking.get("user"), dict) else None),
-    ):
-        normalized = _normalize_email(
-            str(candidate) if candidate is not None else None
-        )
-        if normalized:
-            return normalized
-    return None
-
-
-def _build_detail_row(label: str, value: str) -> str:
-    return f"<li><strong>{_escape_html(label)}:</strong> {_escape_html(value)}</li>"
-
-
-def _build_booking_details_html(booking: dict[str, Any]) -> str:
-    user = booking.get("user") or {}
-    customer_name = (booking.get("customerName") or user.get("fullName") or "—").strip()
-    customer_email = _booking_customer_email(booking) or "—"
-    customer_phone = (booking.get("customerPhone") or user.get("phone") or "—").strip()
-    pickup = _location_label(booking.get("pickupLocation"))
-    dropoff = _location_label(booking.get("dropoffLocation"))
-    scheduled = _format_scheduled_time(booking["scheduledTime"])
-    return_time = booking.get("returnTime")
-    child_seats = _format_child_seats_summary(booking)
-    flight = (booking.get("flightNumber") or "").strip() or None
-    note = (booking.get("note") or "").strip() or None
-    driver = ((booking.get("driver") or {}).get("name") or "").strip() or None
-
-    rows = [
-        _build_detail_row("Reference", booking["bookingReference"]),
-        _build_detail_row("Passenger", customer_name),
-        _build_detail_row("Email", customer_email),
-        _build_detail_row("Phone", customer_phone),
-        _build_detail_row("Pickup", pickup),
-        _build_detail_row("Drop-off", dropoff),
-        _build_detail_row("Pickup date & time", scheduled),
-    ]
-    if return_time:
-        rows.append(_build_detail_row("Return date & time", _format_scheduled_time(return_time)))
-    rows.append(_build_detail_row("Passengers", str(booking["passengerCount"])))
-    if is_website_booking_public(booking):
-        rows.append(_build_detail_row("Luggage pieces", str(booking["luggageCount"])))
-        if child_seats:
-            rows.append(_build_detail_row("Child seats", child_seats))
-    if flight:
-        rows.append(_build_detail_row("Flight number", flight))
-    if note:
-        rows.append(_build_detail_row("Notes", note))
-    if driver:
-        rows.append(_build_detail_row("Driver", driver))
-    rows.append(_build_detail_row("Total fare", _format_fare_eur(booking["price"])))
-    rows.append(_build_detail_row("Status", booking["status"]))
-    return f"<ul>{''.join(rows)}</ul>"
 
 
 class MailService:
@@ -183,8 +81,11 @@ class MailService:
     def _plain_text_from_html(self, html: str) -> str:
         text = re.sub(r"<br\s*/?>", "\n", html, flags=re.IGNORECASE)
         text = re.sub(r"</p>", "\n\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"</td>", " | ", text, flags=re.IGNORECASE)
+        text = re.sub(r"</tr>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"</li>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", "", text)
+        text = re.sub(r"[ \t]+\n", "\n", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
@@ -236,8 +137,8 @@ class MailService:
             return False
 
         reference = (booking or {}).get("bookingReference") or "your booking"
-        details = _build_booking_details_html(booking) if booking else ""
         notify_to = get_booking_notify_email()
+        html = render_client_booking_confirmation_html(booking)
         logger.info(
             "Sending booking confirmation: reference=%s to=%s reply_to=%s %s",
             reference,
@@ -250,12 +151,7 @@ class MailService:
                 smtp,
                 recipient,
                 f"Booking confirmed — {reference}",
-                f"""
-                  <h1>Booking confirmed</h1>
-                  <p>Thank you. Your taxi booking ({_escape_html(reference)}) was received successfully.</p>
-                  {f"<h2>Booking details</h2>{details}" if details else ""}
-                  <p>We will contact you if anything changes.</p>
-                """,
+                html,
                 reply_to=notify_to,
             )
             logger.info(
@@ -287,19 +183,13 @@ class MailService:
             return False
 
         reference = booking["bookingReference"]
-        heading = f"New Booking - {reference}"
-        details = _build_booking_details_html(booking)
+        html = render_owner_new_booking_html(booking)
         try:
             await self._send_async(
                 smtp,
                 notify_to,
-                heading,
-                f"""
-                  <h1>{_escape_html(heading)}</h1>
-                  <p>A new taxi booking has been received. Customer and trip details are below.</p>
-                  <h2>Booking details</h2>
-                  {details}
-                """,
+                f"New Booking - {reference}",
+                html,
             )
             logger.info(
                 "New-booking alert sent: reference=%s to=%s",
@@ -322,7 +212,7 @@ class MailService:
         *,
         customer_email_override: str | None = None,
     ) -> dict[str, bool]:
-        customer_email = _booking_customer_email(
+        customer_email = booking_customer_email(
             booking,
             override=customer_email_override,
         )
